@@ -15,6 +15,7 @@ failed coverage/verification escalates the hunk (markers stay in the file).
 - `pnpm install` · `pnpm -r typecheck` · `pnpm -r test` (vitest, stubbed asker)
 - `npx tsx packages/cli/src/cli.ts resolve [--check] [--json] [files...]`
 - `npx tsx packages/cli/src/cli.ts dig <repo> [--out corpus.jsonl] [--limit N]`
+- `npx tsx packages/cli/src/cli.ts dig <repo> --prs [--no-fetch]` — harvest conflicts from every open PR (needs `gh`; `resolved:null` entries, eval reports apply-vs-escalate)
 - `npx tsx packages/cli/src/cli.ts eval <corpus.jsonl>`
 
 Live calls need `TYPESAFE_API_KEY`. `git merge-tree --write-tree` exits 1 on
