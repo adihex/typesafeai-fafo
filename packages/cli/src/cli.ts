@@ -21,6 +21,8 @@ resolve options:
   --min-coverage F    escalate below this coverage noul (default 0.5)
   --min-verify F      reject winner below this verify noul (default 0.5)
   --no-verify       skip per-candidate verification nouls
+  --no-decompose    skip per-window retry on escalated hunks
+  --max-windows N   max sub-regions per hunk when decomposing (default 12)
   --model M         model override (default jev-latest)
 
 dig options:
@@ -49,6 +51,8 @@ async function main(): Promise<number> {
       "min-coverage": { type: "string" },
       "min-verify": { type: "string" },
       "no-verify": { type: "boolean" },
+      "no-decompose": { type: "boolean" },
+      "max-windows": { type: "string" },
       model: { type: "string" },
       out: { type: "string" },
       limit: { type: "string" },
@@ -69,6 +73,8 @@ async function main(): Promise<number> {
     minCoverage: num(values["min-coverage"], 0.5),
     minVerify: num(values["min-verify"], 0.5),
     noVerify: values["no-verify"] ?? false,
+    decompose: values["no-decompose"] ? false : undefined,
+    maxWindows: num(values["max-windows"], 12),
     model: values.model,
     json: values.json ?? false,
   };

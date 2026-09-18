@@ -1,13 +1,17 @@
 import { enumerateCandidates } from "./candidates.ts";
+import { decomposeHunk, type Element } from "./decompose.ts";
 import { interpret } from "./interpret.ts";
 import { parseConflicts } from "./parse.ts";
 import { buildHunkRequest } from "./questions.ts";
 import type {
   Asker,
+  ConflictHunk,
   Decision,
   HunkOutcome,
+  ParsedConflicts,
   ResolveOptions,
   ResolveResult,
+  WindowTrace,
 } from "./types.ts";
 
 function escalateAll(outcomes: HunkOutcome[], reason: Decision["reason"], startIdx = 0) {
@@ -18,10 +22,213 @@ function escalateAll(outcomes: HunkOutcome[], reason: Decision["reason"], startI
   );
 }
 
+const SITUATION_SUFFIX =
+  " The marked region is one window of a larger conflict — neighboring" +
+  " windows are decided separately, so resolve THIS region only. Lines" +
+  " outside the markers are context shared by both versions.";
+
+interface WindowAskResult {
+  decision: Decision;
+  usage?: { input_tokens: number; output_tokens: number };
+}
+
+function addUsage(
+  a: { input_tokens: number; output_tokens: number } | undefined,
+  b: { input_tokens: number; output_tokens: number } | undefined,
+) {
+  if (!a) return b;
+  if (!b) return a;
+  return {
+    input_tokens: a.input_tokens + b.input_tokens,
+    output_tokens: a.output_tokens + b.output_tokens,
+  };
+}
+
+/**
+ * Context for one window: what has been resolved so far (anchors + applied
+ * windows) before it, upcoming anchors after it, plus a few lines of real
+ * file context outside the conflict.
+ */
+function windowContext(
+  parsed: ParsedConflicts,
+  hunk: ConflictHunk,
+  elements: Element[],
+  index: number,
+  resolvedSoFar: string[],
+): { contextBefore: string[]; contextAfter: string[] } {
+  const fileBefore = parsed.lines.slice(Math.max(0, hunk.startLine - 5), hunk.startLine);
+  const fileAfter = parsed.lines.slice(hunk.endLine, hunk.endLine + 5);
+  const contextBefore = [...fileBefore, ...resolvedSoFar].slice(-15);
+
+  const afterAnchors: string[] = [];
+  for (let i = index + 1; i < elements.length && afterAnchors.length < 15; i++) {
+    const e = elements[i];
+    if (e.kind === "anchor") afterAnchors.push(...e.lines);
+  }
+  return {
+    contextBefore,
+    contextAfter: [...afterAnchors.slice(0, 15), ...fileAfter].slice(0, 15),
+  };
+}
+
+/**
+ * Finest granularity first; coarsen only when the window count would blow
+ * the ask budget. Returns null when no granularity produces a useful split.
+ */
+function decomposeAdaptive(
+  hunk: ConflictHunk,
+  maxWindows: number,
+): Element[] | null {
+  for (const minAnchor of [1, 3, 8]) {
+    const { elements, windows } = decomposeHunk(hunk, minAnchor);
+    if (windows === 0 || windows > maxWindows) continue;
+    const ws = elements.filter((e): e is Element & { kind: "window" } => e.kind === "window");
+    // A single window spanning the whole hunk is the same question again.
+    if (
+      ws.length === 1 &&
+      ws[0].ours.length === hunk.ours.length &&
+      ws[0].theirs.length === hunk.theirs.length
+    ) {
+      continue;
+    }
+    return elements;
+  }
+  return null;
+}
+
+/**
+ * Decompose-and-retry for an escalated hunk. Aligns ours/theirs(/base) into
+ * anchors + windows, asks Jev per window, and splices the winners. Returns
+ * null when the hunk can't usefully decompose (no anchors, one whole-hunk
+ * window, or too many windows), so the caller keeps the original verdict.
+ */
+async function resolveHunkDecomposed(
+  parsed: ParsedConflicts,
+  hunk: ConflictHunk,
+  ask: Asker,
+  opts: ResolveOptions,
+  wholeHunkReason: Decision["reason"],
+): Promise<{ decision: Decision; usage?: WindowAskResult["usage"] } | null> {
+  const elements = decomposeAdaptive(hunk, opts.maxWindows ?? 12);
+  if (!elements) return null;
+
+  const windowTraces: WindowTrace[] = [];
+  const resolvedSoFar: string[] = [];
+  const winners = new Map<number, string[]>();
+  let usage: WindowAskResult["usage"];
+  let wi = 0;
+
+  for (let i = 0; i < elements.length; i++) {
+    const e = elements[i];
+    if (e.kind === "anchor") {
+      resolvedSoFar.push(...e.lines);
+      continue;
+    }
+    const synthHunk: ConflictHunk = {
+      startLine: hunk.startLine,
+      endLine: hunk.endLine,
+      oursLabel: hunk.oursLabel,
+      theirsLabel: hunk.theirsLabel,
+      ours: e.ours,
+      theirs: e.theirs,
+      base: e.base,
+    };
+    const candidates = enumerateCandidates(synthHunk);
+    const { contextBefore, contextAfter } = windowContext(
+      parsed,
+      hunk,
+      elements,
+      i,
+      resolvedSoFar,
+    );
+    const request = buildHunkRequest(
+      parsed,
+      synthHunk,
+      candidates,
+      { ...opts, contextBefore, contextAfter, situationSuffix: SITUATION_SUFFIX },
+      opts,
+    );
+
+    let result;
+    try {
+      result = await ask(request);
+    } catch (err) {
+      windowTraces.push({
+        index: wi,
+        oursLines: e.ours.length,
+        theirsLines: e.theirs.length,
+        action: "escalate",
+        reason: "ask-failed",
+      });
+      return {
+        decision: {
+          action: "escalate",
+          reason: "ask-failed",
+          detail: {
+            verify: {},
+            error: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+            windows: windowTraces,
+            wholeHunkReason,
+          },
+        },
+        usage,
+      };
+    }
+    usage = addUsage(usage, result.usage);
+    const d = interpret(result, candidates, opts);
+    windowTraces.push({
+      index: wi,
+      oursLines: e.ours.length,
+      theirsLines: e.theirs.length,
+      picked: d.detail.picked,
+      confidence: d.detail.confidence,
+      coverage: d.detail.coverage,
+      action: d.action,
+      reason: d.action === "escalate" ? d.reason : undefined,
+    });
+    if (d.action === "escalate") {
+      return {
+        decision: {
+          action: "escalate",
+          reason: d.reason,
+          detail: { ...d.detail, windows: windowTraces, wholeHunkReason },
+        },
+        usage,
+      };
+    }
+    winners.set(wi, d.candidate!.lines);
+    resolvedSoFar.push(...d.candidate!.lines);
+    wi++;
+  }
+
+  // Splice anchors + winners into the full replacement text.
+  const lines: string[] = [];
+  wi = 0;
+  for (const e of elements) {
+    if (e.kind === "anchor") lines.push(...e.lines);
+    else lines.push(...(winners.get(wi++) ?? []));
+  }
+
+  return {
+    decision: {
+      action: "apply",
+      candidate: {
+        kind: "spliced",
+        description:
+          "Line-level merge: the conflict was split into sub-regions and each resolved separately.",
+        lines,
+      },
+      detail: { verify: {}, windows: windowTraces, wholeHunkReason },
+    },
+    usage,
+  };
+}
+
 /**
  * Resolve every conflict hunk in `text`: enumerate candidates, ask Jev once
  * per hunk (fanned-out questions), apply winners, leave markers on
- * escalations so a human/LLM still sees them.
+ * escalations so a human/LLM still sees them. Escalated hunks retry as
+ * decomposed sub-conflicts unless `opts.decompose === false`.
  */
 export async function resolveText(
   text: string,
@@ -37,12 +244,28 @@ export async function resolveText(
     const request = buildHunkRequest(parsed, hunk, candidates, opts, opts);
     try {
       const result = await ask(request);
-      outcomes.push({
-        hunkIndex: i,
-        hunk,
-        decision: interpret(result, candidates, opts),
-        usage: result.usage,
-      });
+      let decision = interpret(result, candidates, opts);
+      let usage: HunkOutcome["usage"] = result.usage;
+
+      if (
+        decision.action === "escalate" &&
+        decision.reason !== "ask-failed" &&
+        opts.decompose !== false
+      ) {
+        const retry = await resolveHunkDecomposed(
+          parsed,
+          hunk,
+          ask,
+          opts,
+          decision.reason,
+        );
+        if (retry) {
+          decision = retry.decision;
+          usage = addUsage(usage, retry.usage);
+        }
+      }
+
+      outcomes.push({ hunkIndex: i, hunk, decision, usage });
     } catch (e) {
       outcomes.push({
         hunkIndex: i,

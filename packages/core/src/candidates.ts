@@ -9,6 +9,8 @@ const DESCRIPTIONS: Record<CandidateKind, string> = {
     "Keep every distinct line from both versions, in OURS order then THEIRS-only lines appended.",
   base: "Restore the original BASE version; discard both changes.",
   drop: "Delete the conflicted region entirely; both versions are moot.",
+  spliced:
+    "Line-level merge: the conflict was split into sub-regions and each resolved separately.",
 };
 
 function dedupeLines(first: string[], second: string[]): string[] {

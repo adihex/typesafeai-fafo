@@ -1,4 +1,5 @@
 export { enumerateCandidates } from "./candidates.ts";
+export { decomposeHunk, lcsPairs } from "./decompose.ts";
 export { interpret } from "./interpret.ts";
 export { ConflictParseError, hasConflictMarkers, parseConflicts } from "./parse.ts";
 export {
@@ -22,4 +23,5 @@ export type {
   ParsedConflicts,
   ResolveOptions,
   ResolveResult,
+  WindowTrace,
 } from "./types.ts";

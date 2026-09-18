@@ -41,12 +41,16 @@ export function buildState(
   ctx: HunkContext,
 ): { [key: string]: JsonValue } {
   const n = ctx.contextLines ?? 15;
-  const before = parsed.lines.slice(Math.max(0, hunk.startLine - n), hunk.startLine);
-  const after = parsed.lines.slice(hunk.endLine, hunk.endLine + n);
+  const before =
+    ctx.contextBefore ??
+    parsed.lines.slice(Math.max(0, hunk.startLine - n), hunk.startLine);
+  const after =
+    ctx.contextAfter ?? parsed.lines.slice(hunk.endLine, hunk.endLine + n);
 
   const state: { [key: string]: JsonValue } = {
     situation:
-      "A git merge produced a conflict in this file. Decide how the conflicted region should be resolved.",
+      "A git merge produced a conflict in this file. Decide how the conflicted region should be resolved." +
+      (ctx.situationSuffix ?? ""),
     versions: {
       ours: block(`OURS (${hunk.oursLabel || "ours"})`, truncateLines(hunk.ours, 150)),
       theirs: block(`THEIRS (${hunk.theirsLabel || "theirs"})`, truncateLines(hunk.theirs, 150)),

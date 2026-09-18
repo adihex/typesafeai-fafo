@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  decomposeHunk,
   enumerateCandidates,
   hasConflictMarkers,
   interpret,
+  lcsPairs,
   parseConflicts,
   ConflictParseError,
   resolveText,
@@ -211,7 +213,9 @@ describe("resolveText", () => {
 
   it("leaves markers on escalation", async () => {
     const lowCov = result({ [COVERED]: { type: "noul", noul: 0.1 } });
-    const res = await resolveText(CONFLICT_2WAY, asker(lowCov));
+    const res = await resolveText(CONFLICT_2WAY, asker(lowCov), {
+      decompose: false,
+    });
     expect(res.escalated).toBe(1);
     expect(hasConflictMarkers(res.text)).toBe(true);
   });
@@ -220,5 +224,127 @@ describe("resolveText", () => {
     const res = await resolveText(MULTI, asker(result()));
     expect(res.outcomes).toHaveLength(2);
     expect(res.text).toBe("a\no1\nmid\no2\nz\n");
+  });
+});
+
+describe("decomposeHunk", () => {
+  it("splits a two-way hunk into anchors and windows", () => {
+    const h = hunk({
+      ours: ["same", "o1", "also"],
+      theirs: ["same", "t1", "also"],
+    });
+    const { elements, windows } = decomposeHunk(h, 1);
+    expect(windows).toBe(1);
+    const kinds = elements.map((e) => e.kind);
+    expect(kinds).toEqual(["anchor", "window", "anchor"]);
+  });
+
+  it("keeps multiple windows apart across anchors", () => {
+    const h = hunk({
+      ours: ["A", "o1", "B", "o2", "C"],
+      theirs: ["A", "t1", "B", "t2", "C"],
+    });
+    const { windows } = decomposeHunk(h, 1);
+    expect(windows).toBe(2);
+  });
+
+  it("merges windows across short anchors", () => {
+    const h = hunk({
+      ours: ["A", "o1", "B", "o2", "C"],
+      theirs: ["A", "t1", "B", "t2", "C"],
+    });
+    // "B" is a 1-line anchor: minAnchor=2 merges the two windows into one
+    const { windows } = decomposeHunk(h, 2);
+    expect(windows).toBe(1);
+  });
+
+  it("recovers a window-level base span for diff3 hunks", () => {
+    const h = hunk({
+      base: ["keep", "old", "end"],
+      ours: ["keep", "new-o", "end"],
+      theirs: ["keep", "new-t", "end"],
+    });
+    const { elements } = decomposeHunk(h, 1);
+    const w = elements.find((e) => e.kind === "window");
+    expect(w && w.kind === "window" ? w.base : null).toEqual(["old"]);
+  });
+
+  it("finds LCS pairs", () => {
+    expect(lcsPairs(["a", "b", "c"], ["x", "b", "c", "y"])).toEqual([
+      [1, 1],
+      [2, 2],
+    ]);
+  });
+});
+
+describe("resolveText with decomposition", () => {
+  // An interleaved conflict: shared anchors with per-window choices.
+  const INTERLEAVED = `head
+<<<<<<< ours
+import { a } from "x";
+shared();
+callOurs();
+=======
+import { a, b } from "x";
+shared();
+callTheirs();
+extra();
+>>>>>>> theirs
+tail
+`;
+
+  function pickResult(
+    choice: string,
+    over: Record<string, unknown> = {},
+  ): SystemOneResult<Questions> {
+    const answers: Record<string, unknown> = {
+      [PICK]: { type: "choice", choice, confidence: 0.9, probabilities: {} },
+      [COVERED]: { type: "noul", noul: 0.95 },
+      ...over,
+    };
+    return { model: "jev-test", answers: answers as never, usage: { input_tokens: 1, output_tokens: 1 } };
+  }
+
+  it("splices per-window winners when the whole hunk can't be covered", async () => {
+    // Whole-hunk ask fails coverage; window asks pick by content.
+    const ask: Asker = async (req) => {
+      const state = req.state as { situation: string; versions: { ours: string; theirs: string } };
+      if (!state.situation.includes("one window of a larger conflict")) {
+        return pickResult("ours", { [COVERED]: { type: "noul", noul: 0.1 } });
+      }
+      const pick =
+        state.versions.ours.includes("callOurs") ? "ours" : "theirs";
+      return pickResult(pick);
+    };
+    const res = await resolveText(INTERLEAVED, ask);
+    expect(res.applied).toBe(1);
+    expect(res.outcomes[0].decision.candidate?.kind).toBe("spliced");
+    expect(res.text).toContain("callOurs();");
+    expect(res.text).toContain('import { a, b } from "x";');
+    expect(hasConflictMarkers(res.text)).toBe(false);
+  });
+
+  it("escalates when a window verdict escalates", async () => {
+    const ask: Asker = async (req) => {
+      const state = req.state as { situation: string };
+      if (!state.situation.includes("one window of a larger conflict")) {
+        return pickResult("ours", { [COVERED]: { type: "noul", noul: 0.1 } });
+      }
+      return pickResult("ours", { [COVERED]: { type: "noul", noul: 0.1 } });
+    };
+    const res = await resolveText(INTERLEAVED, ask);
+    expect(res.escalated).toBe(1);
+    expect(res.outcomes[0].decision.detail.wholeHunkReason).toBe("not-in-candidates");
+    expect(hasConflictMarkers(res.text)).toBe(true);
+  });
+
+  it("does not retry when decompose is off", async () => {
+    let calls = 0;
+    const ask: Asker = async () => {
+      calls++;
+      return pickResult("ours", { [COVERED]: { type: "noul", noul: 0.1 } });
+    };
+    await resolveText(INTERLEAVED, ask, { decompose: false });
+    expect(calls).toBe(1);
   });
 });

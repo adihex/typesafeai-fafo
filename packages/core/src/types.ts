@@ -30,7 +30,8 @@ export type CandidateKind =
   | "both-theirs-ours"
   | "union"
   | "base"
-  | "drop";
+  | "drop"
+  | "spliced";
 
 export interface Candidate {
   kind: CandidateKind;
@@ -48,6 +49,12 @@ export interface HunkContext {
   theirsIntent?: string;
   /** Lines of surrounding context included in state. Default 15. */
   contextLines?: number;
+  /** Override for state.context_before (default: lines above the hunk). */
+  contextBefore?: string[];
+  /** Override for state.context_after (default: lines below the hunk). */
+  contextAfter?: string[];
+  /** Appended to the state's situation line (e.g. sub-region framing). */
+  situationSuffix?: string;
 }
 
 export type EscalationReason =
@@ -56,6 +63,18 @@ export type EscalationReason =
   | "verification-failed"
   | "low-confidence"
   | "ask-failed";
+
+/** Per-window trace left by a decomposed (spliced) decision. */
+export interface WindowTrace {
+  index: number;
+  oursLines: number;
+  theirsLines: number;
+  picked?: string;
+  confidence?: number;
+  coverage?: number;
+  action: "apply" | "escalate";
+  reason?: EscalationReason;
+}
 
 export interface Decision {
   action: "apply" | "escalate";
@@ -71,6 +90,10 @@ export interface Decision {
     probabilities?: Record<string, number>;
     /** Error message when the ask itself failed. */
     error?: string;
+    /** Per-window outcomes when the decision came from decomposition. */
+    windows?: WindowTrace[];
+    /** Whole-hunk verdict that triggered decomposition. */
+    wholeHunkReason?: EscalationReason;
   };
 }
 
@@ -101,6 +124,10 @@ export interface ResolveOptions extends HunkContext {
   noVerify?: boolean;
   /** Model override passed through to the request. */
   model?: string;
+  /** Retry escalated hunks as per-window sub-conflicts. Default true. */
+  decompose?: boolean;
+  /** Max windows a hunk may split into before giving up. Default 12. */
+  maxWindows?: number;
 }
 
 /** The one impure seam: everything else in core is pure. */
