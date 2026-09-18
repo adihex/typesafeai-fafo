@@ -1,0 +1,25 @@
+{
+  "name": "fafo-resolve",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "fafo-resolve": "./src/cli.ts"
+  },
+  "scripts": {
+    "start": "tsx src/cli.ts",
+    "resolve": "tsx src/cli.ts resolve",
+    "eval": "tsx src/cli.ts eval",
+    "dig": "tsx src/cli.ts dig",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fafo/core": "workspace:*",
+    "@typesafe-ai/sdk": "^0.6.0",
+    "tsx": "^4.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0"
+  }
+}

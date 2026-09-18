@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "skills": {
+    "autoresearch-create": {
+      "source": "davebcn87/pi-autoresearch",
+      "sourceType": "github",
+      "skillPath": "skills/autoresearch-create/SKILL.md",
+      "computedHash": "e4973a21f92797f14df654c97fda5e2e43cf502a3ecbb2298b1aeb7ca23c31c6"
+    },
+    "autoresearch-finalize": {
+      "source": "davebcn87/pi-autoresearch",
+      "sourceType": "github",
+      "skillPath": "skills/autoresearch-finalize/SKILL.md",
+      "computedHash": "ab235f133af1739fa7a533d9306c199e9392bd2561b0d6cce021bc18e2457ec6"
+    },
+    "autoresearch-hooks": {
+      "source": "davebcn87/pi-autoresearch",
+      "sourceType": "github",
+      "skillPath": "skills/autoresearch-hooks/SKILL.md",
+      "computedHash": "19250a093e5751b3682ff6cdbd454bf0c5ae5a2ee751d8133481df19a89dd862"
+    },
+    "typesafe-ai": {
+      "source": "typesafe-ai/skills",
+      "sourceType": "github",
+      "skillPath": "skills/typesafe-ai/SKILL.md",
+      "computedHash": "9cd84c5e535dec8dec59917c110f9c00b4a61faadb86b432ec7e41051170af12"
+    }
+  }
+}
