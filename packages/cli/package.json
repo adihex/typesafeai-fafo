@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@fafo/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@typesafe-ai/sdk": "^0.6.0",
     "tsx": "^4.20.0"
   },

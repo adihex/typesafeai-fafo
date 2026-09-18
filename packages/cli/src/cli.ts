@@ -5,6 +5,7 @@ import { cmdEval } from "./cmd-eval.ts";
 import { cmdInstallMergetool } from "./cmd-install-mergetool.ts";
 import { cmdReport } from "./cmd-report.ts";
 import { cmdResolve } from "./cmd-resolve.ts";
+import { cmdMcp } from "./mcp.ts";
 
 const USAGE = `fafo-resolve — merge conflicts adjudicated by TypeSafe Jev
 
@@ -15,6 +16,7 @@ usage:
   fafo-resolve dig <repo> --prs       harvest conflicts from every OPEN pull request (needs gh)
   fafo-resolve eval <corpus.jsonl>    score the resolver against dug ground truth
   fafo-resolve report <eval.json>     render eval output as a self-contained HTML report
+  fafo-resolve mcp                    serve the resolver to agents over stdio MCP
 
 resolve options:
   --check             report decisions, write nothing
@@ -158,6 +160,8 @@ async function main(): Promise<number> {
       if (!input) throw new Error("report needs an eval.json path");
       return cmdReport({ input, out: values.out });
     }
+    case "mcp":
+      return cmdMcp();
     default:
       console.error(`unknown command: ${cmd}\n`);
       console.log(USAGE);

@@ -21,6 +21,9 @@ failed coverage/verification escalates the hunk (markers stay in the file).
 - `npx tsx packages/cli/src/cli.ts dig <repo> --prs [--no-fetch]` — harvest conflicts from every open PR (needs `gh`; `resolved:null` entries, eval reports apply-vs-escalate)
 - `npx tsx packages/cli/src/cli.ts eval <corpus.jsonl> [--json]`
 - `npx tsx packages/cli/src/cli.ts report <eval.json> [--out report.html]`
+- `npx tsx packages/cli/src/cli.ts mcp` — stdio MCP server: `fafo_scan`
+  (conflicted files + hunk counts, no key needed) and `fafo_resolve`
+  (the resolve pipeline; `check:true` dry-runs).
 
 Live calls need `TYPESAFE_API_KEY`. `git merge-tree --write-tree` exits 1 on
 conflicts (that's the harvestable case, not an error).

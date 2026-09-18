@@ -114,6 +114,34 @@ candidate with confidence/coverage/reason, side-by-side
 ours/theirs/resolution snippets, per-window traces, fafo-vs-human
 full-file compare. No deps, no build step.
 
+### `mcp` — serve the resolver to agents
+
+```sh
+fafo-resolve mcp        # stdio MCP server
+```
+
+Two tools over the same pipeline and gates the CLI exposes:
+
+- **`fafo_scan`** — conflicted files + hunk counts. Read-only, needs no
+  API key. Agents call this first to size up a merge.
+- **`fafo_resolve`** — resolve conflicts. `files` (repo-relative) or
+  git's unmerged list; `check:true` dry-runs; `oursIntent`/`theirsIntent`
+  improve picks. Returns per-hunk outcomes; escalations keep markers.
+
+Client config (MCP hosts don't get your shell env — the server falls back
+to the repo's `.env` for `TYPESAFE_API_KEY`):
+
+```json
+{
+  "mcpServers": {
+    "fafo": {
+      "command": "npx",
+      "args": ["tsx", "/path/to/typesafeai-fafo/packages/cli/src/cli.ts", "mcp"]
+    }
+  }
+}
+```
+
 ## Integrations
 
 - **git mergetool** — `fafo-resolve install-mergetool`, then `git
@@ -122,9 +150,11 @@ full-file compare. No deps, no build step.
   [docs/lazygit.md](docs/lazygit.md). Resolve file under cursor +
   re-stage, or resolve all via mergetool.
 - **agents** — `skills/fafo-resolve/SKILL.md`, installable via `npx
-  skills add <this-repo>`: tells an agent to run `resolve`, treat applied
+  skills add <this-repo>` or by copying to `.devin/skills/` /
+  `~/.agents/skills/`: tells an agent to run `resolve`, treat applied
   hunks as done, and take escalated hunks (markers left behind) as its
-  own queue.
+  own queue. Agent runtimes that speak MCP can use `fafo-resolve mcp`
+  (above) instead of shelling out.
 - **CI / scripts** — `resolve --check --json` gives a dry-run verdict
   stream; exit code 0/1 gates pipelines.
 
