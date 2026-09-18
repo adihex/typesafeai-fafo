@@ -34,6 +34,7 @@ export async function cmdEval(o: {
   corpus: string;
   cwd: string;
   json?: boolean;
+  concurrency?: number;
 } & ResolveOptions): Promise<number> {
   const entries = readFileSync(o.corpus, "utf8")
     .split("\n")
@@ -47,51 +48,76 @@ export async function cmdEval(o: {
   const client = new TypeSafeClient();
   const ask: Asker = (req) => client.systemOne(req) as never;
   const intents = loadIntents(o.corpus);
-  const rows: unknown[] = [];
+  const rows: unknown[] = new Array(entries.length);
   let correct = 0;
   let resolvedByUs = 0;
   let escalated = 0;
 
-  for (const e of entries) {
-    const intent = intents[e.merge];
-    const res = await resolveText(e.conflicted, ask, {
-      ...o,
-      filePath: e.path,
-      oursIntent: intent ? `${intent.msg} — ours-side tip: ${intent.ours}` : e.oursLabel,
-      theirsIntent: intent ? `${intent.msg} — theirs-side tip: ${intent.theirs}` : e.theirsLabel,
-    });
+  let idx = 0;
+  const workers = Array.from(
+    { length: Math.max(1, Math.min(o.concurrency ?? 8, entries.length)) },
+    async () => {
+      while (idx < entries.length) {
+        const i = idx++;
+        const e = entries[i];
+        const intent = intents[e.merge];
+        let oursIntent: string | undefined = e.oursLabel;
+        let theirsIntent: string | undefined = e.theirsLabel;
+        if (intent) {
+          // Decode merge direction: "Merge branch 'X' into Y" → ours=Y is the
+          // destination branch, theirs=X is incoming. Explicit directives in
+          // the message ("keep UAT values") get surfaced verbatim.
+          const dir = intent.msg.match(/[Mm]erge\s+(?:branch\s+)?['"]?([\w./-]+)['"]?\s+into\s+['"]?([\w./-]+)['"]?/);
+          const policy = intent.msg.match(/\(([^)]*keep[^)]*)\)/i)?.[1];
+          const frame = [
+            `Merge: ${intent.msg}`,
+            dir ? `direction: '${dir[1]}' (theirs) → '${dir[2]}' (ours, destination branch)` : null,
+            policy ? `resolution policy stated by merger: "${policy}"` : null,
+          ].filter(Boolean).join("; ");
+          oursIntent = `${frame}. ours-side (${dir?.[2] ?? "ours"}) change: ${intent.ours}`;
+          theirsIntent = `${frame}. theirs-side (${dir?.[1] ?? "theirs"}) change: ${intent.theirs}`;
+        }
+        const res = await resolveText(e.conflicted, ask, {
+          ...o,
+          filePath: e.path,
+          oursIntent,
+          theirsIntent,
+        });
 
-    let verdict: string;
-    if (e.resolved === null) {
-      verdict = res.escalated > 0 ? "escalated (file deleted in truth)" : "applied (truth: deleted)";
-      if (res.escalated > 0) escalated++;
-    } else if (res.escalated > 0) {
-      verdict = "escalated";
-      escalated++;
-    } else {
-      resolvedByUs++;
-      const match = normalize(res.text) === normalize(e.resolved);
-      verdict = match ? "match" : "DIFFERS";
-      if (match) correct++;
-    }
+        let verdict: string;
+        if (e.resolved === null) {
+          verdict = res.escalated > 0 ? "escalated (file deleted in truth)" : "applied (truth: deleted)";
+          if (res.escalated > 0) escalated++;
+        } else if (res.escalated > 0) {
+          verdict = "escalated";
+          escalated++;
+        } else {
+          resolvedByUs++;
+          const match = normalize(res.text) === normalize(e.resolved);
+          verdict = match ? "match" : "DIFFERS";
+          if (match) correct++;
+        }
 
-    rows.push({
-      merge: e.merge.slice(0, 8),
-      path: e.path,
-      applied: res.applied,
-      escalated: res.escalated,
-      verdict,
-      hunks: res.outcomes.map((x) => ({
-        action: x.decision.action,
-        candidate: x.decision.candidate?.kind,
-        reason: x.decision.reason,
-        error: x.decision.detail.error,
-        conf: x.decision.detail.confidence,
-        cov: x.decision.detail.coverage,
-      })),
-    });
-    if (!o.json) console.error(`${e.merge.slice(0, 8)} ${e.path}: ${verdict}`);
-  }
+        rows[i] = {
+          merge: e.merge.slice(0, 8),
+          path: e.path,
+          applied: res.applied,
+          escalated: res.escalated,
+          verdict,
+          hunks: res.outcomes.map((x) => ({
+            action: x.decision.action,
+            candidate: x.decision.candidate?.kind,
+            reason: x.decision.reason,
+            error: x.decision.detail.error,
+            conf: x.decision.detail.confidence,
+            cov: x.decision.detail.coverage,
+          })),
+        };
+        if (!o.json) console.error(`${e.merge.slice(0, 8)} ${e.path}: ${verdict}`);
+      }
+    },
+  );
+  await Promise.all(workers);
 
   const summary = {
     entries: entries.length,
