@@ -1,6 +1,12 @@
 import type { ConflictHunk, ParsedConflicts } from "./types.ts";
 
 const MARKER = /^<{7}( |$)|^={7}$|^>{7}( |$)|^\|{7}( |$)/m;
+// Git emits exactly 7 marker chars; longer runs (setext underlines, ASCII
+// rules) inside conflict content must not read as markers.
+const OPEN = /^<{7}( |$)/;
+const BASE = /^\|{7}( |$)/;
+const SEP = /^={7}$/;
+const CLOSE = /^>{7}( |$)/;
 
 export function hasConflictMarkers(text: string): boolean {
   return MARKER.test(text);
@@ -31,7 +37,7 @@ export function parseConflicts(text: string): ParsedConflicts {
   const hunks: ConflictHunk[] = [];
 
   for (let i = 0; i < lines.length; i++) {
-    if (!lines[i].startsWith("<<<<<<<")) continue;
+    if (!OPEN.test(lines[i])) continue;
 
     const hunk: ConflictHunk = {
       startLine: i,
@@ -48,21 +54,21 @@ export function parseConflicts(text: string): ParsedConflicts {
     let closed = false;
     for (let j = i + 1; j < lines.length; j++) {
       const l = lines[j];
-      if (l.startsWith("<<<<<<<")) {
+      if (OPEN.test(l)) {
         throw new ConflictParseError("nested conflict marker", j);
       }
-      if (l.startsWith("|||||||")) {
+      if (BASE.test(l)) {
         if (section !== 0) throw new ConflictParseError("base marker out of place", j);
         section = 1;
         hunk.base = [];
         continue;
       }
-      if (l.startsWith("=======")) {
+      if (SEP.test(l)) {
         if (section === 2) throw new ConflictParseError("duplicate separator", j);
         section = 2;
         continue;
       }
-      if (l.startsWith(">>>>>>>")) {
+      if (CLOSE.test(l)) {
         if (section !== 2) throw new ConflictParseError("no separator in conflict", j);
         hunk.theirsLabel = label(l);
         hunk.endLine = j + 1;

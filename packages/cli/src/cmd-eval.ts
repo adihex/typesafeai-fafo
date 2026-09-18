@@ -52,6 +52,7 @@ export async function cmdEval(o: {
   let correct = 0;
   let resolvedByUs = 0;
   let escalated = 0;
+  let parseErrors = 0;
 
   let idx = 0;
   const workers = Array.from(
@@ -77,14 +78,32 @@ export async function cmdEval(o: {
           oursIntent = `${frame}. ours-side (${dir?.[2] ?? "ours"}) change: ${intent.ours}`;
           theirsIntent = `${frame}. theirs-side (${dir?.[1] ?? "theirs"}) change: ${intent.theirs}`;
         }
-        const res = await resolveText(e.conflicted, ask, {
-          ...o,
-          filePath: e.path,
-          oursIntent,
-          theirsIntent,
-        });
-
+        let res: Awaited<ReturnType<typeof resolveText>> | null = null;
         let verdict: string;
+        try {
+          res = await resolveText(e.conflicted, ask, {
+            ...o,
+            filePath: e.path,
+            oursIntent,
+            theirsIntent,
+          });
+        } catch {
+          res = null;
+        }
+        if (res === null) {
+          verdict = "parse-error";
+          parseErrors++;
+          rows[i] = {
+            merge: e.merge.slice(0, 8),
+            path: e.path,
+            applied: 0,
+            escalated: 0,
+            verdict,
+            hunks: [],
+          };
+          if (!o.json) console.error(`${e.merge.slice(0, 8)} ${e.path}: ${verdict}`);
+          continue;
+        }
         if (e.resolved === null) {
           verdict = res.escalated > 0 ? "escalated (file deleted in truth)" : "applied (truth: deleted)";
           if (res.escalated > 0) escalated++;
@@ -130,6 +149,7 @@ export async function cmdEval(o: {
   const summary = {
     entries: entries.length,
     escalated,
+    parseErrors,
     resolvedByUs,
     matchedTruth: correct,
     matchRate: resolvedByUs ? correct / resolvedByUs : null,
