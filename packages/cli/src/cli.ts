@@ -23,6 +23,7 @@ resolve options:
   --no-verify       skip per-candidate verification nouls
   --no-decompose    skip per-window retry on escalated hunks
   --max-windows N   max sub-regions per hunk when decomposing (default 12)
+  --veto-single-fail  escalate on ANY single sub-threshold signal (default: quorum of 2)
   --model M         model override (default jev-latest)
 
 dig options:
@@ -54,6 +55,7 @@ async function main(): Promise<number> {
       "no-decompose": { type: "boolean" },
       "no-second-opinion": { type: "boolean" },
       "no-head-to-head": { type: "boolean" },
+      "veto-single-fail": { type: "boolean" },
       "max-windows": { type: "string" },
       model: { type: "string" },
       out: { type: "string" },
@@ -80,6 +82,7 @@ async function main(): Promise<number> {
     decompose: values["no-decompose"] ? false : undefined,
     secondOpinion: values["no-second-opinion"] ? false : undefined,
     headToHead: values["no-head-to-head"] ? false : undefined,
+    vetoSingleFail: values["veto-single-fail"] ?? false,
     maxWindows: num(values["max-windows"], 12),
     model: values.model,
     json: values.json ?? false,
