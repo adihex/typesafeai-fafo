@@ -14,11 +14,14 @@ failed coverage/verification escalates the hunk (markers stay in the file).
 
 - `pnpm install` · `pnpm -r typecheck` · `pnpm -r test` (vitest, stubbed asker)
 - `npx tsx packages/cli/src/cli.ts resolve [--check] [--json] [files...]`
+- `npx tsx packages/cli/src/cli.ts install-mergetool [--local] [--diff3]`
 - `npx tsx packages/cli/src/cli.ts dig <repo> [--out corpus.jsonl] [--limit N]`
-- `npx tsx packages/cli/src/cli.ts eval <corpus.jsonl>`
+- `npx tsx packages/cli/src/cli.ts eval <corpus.jsonl> [--json]`
+- `npx tsx packages/cli/src/cli.ts report <eval.json> [--out report.html]`
 
 Live calls need `TYPESAFE_API_KEY`. `git merge-tree --write-tree` exits 1 on
 conflicts (that's the harvestable case, not an error).
 
-Later: register as mergetool —
-`git config --global mergetool.fafo.cmd 'fafo-resolve resolve $MERGED'`
+Integrations: `install-mergetool` registers fafo for `git mergetool`
+(exit 0 = file resolved, nonzero = still conflicted); lazygit block in
+`docs/lazygit.md`; agent skill in `skills/fafo-resolve/`.
