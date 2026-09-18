@@ -1,7 +1,21 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { resolveText, type Asker, type ResolveOptions } from "@fafo/core";
 import type { DigEntry } from "./cmd-dig.ts";
+
+interface IntentInfo {
+  msg: string;
+  ours: string;
+  theirs: string;
+}
+
+/** Optional sidecar: merge SHA → commit subjects for intent-aware state. */
+function loadIntents(corpusPath: string): Record<string, IntentInfo> {
+  const p = join(dirname(corpusPath), "intents.json");
+  if (!existsSync(p)) return {};
+  return JSON.parse(readFileSync(p, "utf8")) as Record<string, IntentInfo>;
+}
 
 function normalize(text: string): string {
   return text
@@ -32,17 +46,19 @@ export async function cmdEval(o: {
 
   const client = new TypeSafeClient();
   const ask: Asker = (req) => client.systemOne(req) as never;
+  const intents = loadIntents(o.corpus);
   const rows: unknown[] = [];
   let correct = 0;
   let resolvedByUs = 0;
   let escalated = 0;
 
   for (const e of entries) {
+    const intent = intents[e.merge];
     const res = await resolveText(e.conflicted, ask, {
       ...o,
       filePath: e.path,
-      oursIntent: e.oursLabel,
-      theirsIntent: e.theirsLabel,
+      oursIntent: intent ? `${intent.msg} — ours-side tip: ${intent.ours}` : e.oursLabel,
+      theirsIntent: intent ? `${intent.msg} — theirs-side tip: ${intent.theirs}` : e.theirsLabel,
     });
 
     let verdict: string;

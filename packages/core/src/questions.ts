@@ -92,7 +92,7 @@ export function buildHunkRequest(
 
   const questions: Questions = {
     [PICK]: choice(
-      "Which candidate resolution is correct for this conflict? Choose the option that preserves the intent of both changes where both are still needed.",
+      "Which candidate is the correct resolution for this conflict? Judge by what each side's change was for: the right answer may keep one side, keep both, or restore the base — and it does not keep work that is moot, duplicated, or already subsumed by the other side.",
       criteria,
     ),
     [COVERED]: noul(

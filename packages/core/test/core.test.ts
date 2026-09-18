@@ -193,10 +193,30 @@ describe("interpret", () => {
   it("escalates on low confidence", () => {
     const d = interpret(
       result({
-        [PICK]: { type: "choice", choice: "ours", confidence: 0.3, probabilities: {} },
+        [PICK]: { type: "choice", choice: "ours", confidence: 0.2, probabilities: {} },
       }),
       candidates,
     );
+    expect(d.reason).toBe("low-confidence");
+  });
+
+  it("applies when only one signal hedges (quorum)", () => {
+    const d = interpret(
+      result({ [COVERED]: { type: "noul", noul: 0.45 } }),
+      candidates,
+    );
+    expect(d.action).toBe("apply");
+  });
+
+  it("escalates when two signals fail weakly (quorum)", () => {
+    const d = interpret(
+      result({
+        [COVERED]: { type: "noul", noul: 0.45 },
+        [PICK]: { type: "choice", choice: "ours", confidence: 0.4, probabilities: {} },
+      }),
+      candidates,
+    );
+    expect(d.action).toBe("escalate");
     expect(d.reason).toBe("low-confidence");
   });
 });
