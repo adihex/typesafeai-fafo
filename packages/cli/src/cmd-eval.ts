@@ -123,6 +123,7 @@ export async function cmdEval(o: {
               pick: w.picked,
               act: w.action,
               rsn: w.reason,
+              pl: w.perLine,
             })),
           })),
         };

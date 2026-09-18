@@ -134,7 +134,7 @@ async function resolveHunkDecomposed(
       theirs: e.theirs,
       base: e.base,
     };
-    const candidates = enumerateCandidates(synthHunk);
+    const candidates = enumerateCandidates(synthHunk, opts.filePath);
     const { contextBefore, contextAfter } = windowContext(
       parsed,
       hunk,
@@ -189,11 +189,69 @@ async function resolveHunkDecomposed(
       const d2 = interpret(r2, candidates, opts);
       if (d2.action === "apply" && d2.candidate?.kind === d.detail.picked) d = d2;
     }
+    // Per-line rescue at window granularity: the union is small, so
+    // keep/drop per line is cheap — and a composed subset can be the right
+    // window answer when no flat candidate is. A failed window kills the
+    // whole splice; this is the last shot before it does.
+    let windowPerLine = false;
+    if (
+      d.action === "escalate" &&
+      d.reason !== "ask-failed" &&
+      opts.perLine !== false
+    ) {
+      const seen = new Set(e.ours.map((l) => l.replace(/\s+$/, "")));
+      const askLines = [
+        ...e.ours.map((l) => ({ line: l, side: "ours" as const })),
+        ...e.theirs
+          .filter((l) => !seen.has(l.replace(/\s+$/, "")))
+          .map((l) => ({ line: l, side: "theirs" as const })),
+      ];
+      if (askLines.length > 0) {
+        const r3 = await ask(
+          buildPerLineRequest(
+            parsed,
+            synthHunk,
+            askLines,
+            { ...opts, contextBefore, contextAfter, situationSuffix: SITUATION_SUFFIX },
+            opts,
+          ),
+        );
+        usage = addUsage(usage, r3.usage);
+        const kept = askLines
+          .filter((_, i) => {
+            const a = r3.answers[`keep_${i}`];
+            return a?.type === "noul" && (a as { noul: number }).noul >= 0.5;
+          })
+          .map((x) => x.line);
+        // Only a genuine subset earns the apply — when keep/drop re-derives
+        // an existing flat candidate it adds no information, and the flat
+        // ask already declined to pick it.
+        const isSubset =
+          kept.length > 0 &&
+          candidates.every(
+            (c) => c.lines.join("\n") !== kept.join("\n"),
+          );
+        if (isSubset) {
+          d = {
+            action: "apply",
+            candidate: {
+              kind: "spliced",
+              description:
+                "Line-level merge: composed by per-line keep/drop over the window union.",
+              lines: kept,
+            },
+            detail: { verify: {}, perLine: true },
+          };
+          windowPerLine = true;
+        }
+      }
+    }
     windowTraces.push({
       index: wi,
       oursLines: e.ours.length,
       theirsLines: e.theirs.length,
       picked: d.detail.picked,
+      perLine: windowPerLine || undefined,
       confidence: d.detail.confidence,
       coverage: d.detail.coverage,
       action: d.action,
@@ -282,7 +340,7 @@ export async function resolveText(
 
   for (let i = 0; i < parsed.hunks.length; i++) {
     const hunk = parsed.hunks[i];
-    const candidates = enumerateCandidates(hunk);
+    const candidates = enumerateCandidates(hunk, opts.filePath);
     const request = buildHunkRequest(parsed, hunk, candidates, opts, opts);
     try {
       const result = await ask(request);
@@ -511,10 +569,67 @@ export async function resolveText(
   }
 
   // Splice winners bottom-up so earlier indices stay valid.
-  const lines = [...parsed.lines];
-  for (const o of [...outcomes].reverse()) {
-    if (o.decision.action !== "apply") continue;
-    lines.splice(o.hunk.startLine, o.hunk.endLine - o.hunk.startLine, ...o.decision.candidate!.lines);
+  const splice = () => {
+    const out = [...parsed.lines];
+    for (const o of [...outcomes].reverse()) {
+      if (o.decision.action !== "apply") continue;
+      out.splice(
+        o.hunk.startLine,
+        o.hunk.endLine - o.hunk.startLine,
+        ...o.decision.candidate!.lines,
+      );
+    }
+    return out;
+  };
+  let lines = splice();
+
+  // Composed-file sanity: hunks decide independently, so the full file can
+  // still be globally broken — unparseable JSON, or a block emitted twice by
+  // different hunks. Veto the offending applies (all of them when the break
+  // can't be attributed) so the markers stay for a human.
+  const veto = new Set<number>();
+  if (
+    opts.filePath?.endsWith(".json") &&
+    outcomes.length > 0 &&
+    outcomes.every((o) => o.decision.action === "apply")
+  ) {
+    try {
+      JSON.parse(lines.join("\n"));
+    } catch {
+      outcomes.forEach((o, i) => {
+        if (o.decision.action === "apply") veto.add(i);
+      });
+    }
+  }
+  const windowOwners = new Map<string, Set<number>>();
+  outcomes.forEach((o, i) => {
+    if (o.decision.action !== "apply") return;
+    const ls = o.decision.candidate!.lines
+      .map((l) => l.trim())
+      .filter((l) => l !== "");
+    const seenLocal = new Set<string>();
+    for (let j = 0; j + 5 <= ls.length; j++) {
+      const w = ls.slice(j, j + 5).join("\n");
+      if (w.length < 20) continue;
+      if (seenLocal.has(w)) veto.add(i);
+      seenLocal.add(w);
+      const s = windowOwners.get(w) ?? new Set<number>();
+      s.add(i);
+      windowOwners.set(w, s);
+    }
+  });
+  for (const owners of windowOwners.values()) {
+    if (owners.size > 1) owners.forEach((i) => veto.add(i));
+  }
+  if (veto.size > 0) {
+    for (const i of veto) {
+      outcomes[i].decision = {
+        action: "escalate",
+        reason: "invalid-composition",
+        detail: outcomes[i].decision.detail,
+      };
+    }
+    lines = splice();
   }
 
   return {

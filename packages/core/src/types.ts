@@ -63,6 +63,7 @@ export type EscalationReason =
   | "verification-failed"
   | "discards-work"
   | "low-confidence"
+  | "invalid-composition"
   | "ask-failed";
 
 /** Per-window trace left by a decomposed (spliced) decision. */
@@ -75,6 +76,8 @@ export interface WindowTrace {
   coverage?: number;
   action: "apply" | "escalate";
   reason?: EscalationReason;
+  /** Window winner came from per-line keep/drop over the window union. */
+  perLine?: boolean;
 }
 
 export interface Decision {

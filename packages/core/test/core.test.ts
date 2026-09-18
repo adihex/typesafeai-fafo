@@ -132,6 +132,26 @@ describe("enumerateCandidates", () => {
     // base ["a"] duplicates ours ["a"] — base should be gone
     expect(cs.map((c) => c.kind)).not.toContain("base");
   });
+
+  it("repairs trailing commas in composed candidates for .json files", () => {
+    const cs = enumerateCandidates(
+      hunk({ ours: ['"a": 1,', "}"], theirs: ['"b": 2,', "}"] }),
+      "f.json",
+    );
+    const union = cs.find((c) => c.kind === "union")!;
+    expect(union.lines).toEqual(['"a": 1', "}", '"b": 2,']);
+    const both = cs.find((c) => c.kind === "both-ours-theirs")!;
+    expect(both.lines).toEqual(['"a": 1', "}", '"b": 2', "}"]);
+  });
+
+  it("leaves trailing commas verbatim for non-json files", () => {
+    const cs = enumerateCandidates(
+      hunk({ ours: ['"a": 1,', "}"], theirs: ['"b": 2,', "}"] }),
+      "f.ts",
+    );
+    const union = cs.find((c) => c.kind === "union")!;
+    expect(union.lines).toEqual(['"a": 1,', "}", '"b": 2,']);
+  });
 });
 
 const candidates: Candidate[] = [
@@ -244,6 +264,74 @@ describe("resolveText", () => {
     const res = await resolveText(MULTI, asker(result()));
     expect(res.outcomes).toHaveLength(2);
     expect(res.text).toBe("a\no1\nmid\no2\nz\n");
+  });
+
+  it("vetoes every apply when the composed .json file doesn't parse", async () => {
+    const JSON_CONFLICT = `{
+  "name": "x",
+<<<<<<< HEAD
+  "a": 1,
+=======
+  "b": 2
+>>>>>>> b
+}
+`;
+    // "ours" leaves a trailing comma before "}" — the hunk looks fine in
+    // isolation but the composed file is invalid JSON.
+    const res = await resolveText(JSON_CONFLICT, asker(result()), {
+      filePath: "f.json",
+    });
+    expect(res.applied).toBe(0);
+    expect(res.outcomes[0].decision.reason).toBe("invalid-composition");
+    expect(hasConflictMarkers(res.text)).toBe(true);
+  });
+
+  it("keeps applies when the composed .json file parses", async () => {
+    const JSON_CONFLICT = `{
+  "name": "x",
+<<<<<<< HEAD
+  "a": 1
+=======
+  "b": 2
+>>>>>>> b
+}
+`;
+    const res = await resolveText(JSON_CONFLICT, asker(result()), {
+      filePath: "f.json",
+    });
+    expect(res.applied).toBe(1);
+    expect(hasConflictMarkers(res.text)).toBe(false);
+  });
+
+  it("vetoes hunks that emit a duplicated block", async () => {
+    const block = [
+      "alpha_field_one",
+      "alpha_field_two",
+      "alpha_field_three",
+      "alpha_field_four",
+      "alpha_field_five",
+    ].join("\n");
+    const DUP = `a
+<<<<<<< HEAD
+${block}
+=======
+t1
+>>>>>>> b
+mid
+<<<<<<< HEAD
+${block}
+=======
+t2
+>>>>>>> b
+z
+`;
+    const res = await resolveText(DUP, asker(result()));
+    expect(res.applied).toBe(0);
+    expect(res.outcomes.map((o) => o.decision.reason)).toEqual([
+      "invalid-composition",
+      "invalid-composition",
+    ]);
+    expect(hasConflictMarkers(res.text)).toBe(true);
   });
 });
 
