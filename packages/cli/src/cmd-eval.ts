@@ -128,6 +128,7 @@ export async function cmdEval(o: {
             pick: x.decision.detail.picked,
             margin: x.decision.detail.pickMargin,
             verify: x.decision.detail.verify,
+            discard: x.decision.detail.discard,
             reason: x.decision.reason,
             wholeHunkReason: x.decision.detail.wholeHunkReason,
             error: x.decision.detail.error,
@@ -142,6 +143,7 @@ export async function cmdEval(o: {
               pick: w.picked,
               act: w.action,
               rsn: w.reason,
+              pl: w.perLine,
             })),
           })),
         };
