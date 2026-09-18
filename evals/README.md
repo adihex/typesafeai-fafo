@@ -1,39 +1,62 @@
 # evals/ — agent-surface eval suite
 
-Claude-`plugin eval`-style discipline ported to devin headless: does the
-fafo **skill** and **MCP server** actually steer an agent to the right
-outcome, vs a baseline agent with neither?
+Claude-`plugin eval`-style discipline, runtime-pluggable: does the fafo
+**skill** and **MCP server** actually steer an agent to the right
+outcome, vs a baseline agent with neither — across every agent CLI on
+this machine?
 
 Each case is a directory: `prompt.md` (what a user would type — no tool
-names unless the case is testing discovery) + `fixture.sh` (plants a git
-repo with the needed conflict) + `graders.yaml` (deterministic pass/fail
-checks — no LLM judges, transcripts + file state only).
+names unless the case is testing discovery) + `case.yaml` (`fixture:`)
++ `graders` (deterministic pass/fail — no LLM judges, transcripts +
+file state only).
 
 ## Run
 
 ```sh
-./evals/run.sh                 # all cases × RUNS × both arms
-./evals/run.sh inventory-scan  # one case
-RUNS=1 ARMS=with ./evals/run.sh resolve-applies   # cheap iteration
+export TYPESAFE_API_KEY=...                          # agents inherit it
+./evals/run.sh                                       # devin, all cases, 3 runs × 2 arms
+RUNTIMES="devin claude codex" ./evals/run.sh         # a matrix slice
+RUNS=1 ARMS=with ./evals/run.sh resolve-applies      # cheap iteration
 ```
 
-Per run: build a scratch repo → `devin -p --export transcript.json` in it
-→ grade transcript + file state. Score = fraction of graders passed;
-case score = mean over RUNS (default 3). Report prints WITH / W/OUT / Δ
-per case — **Δ is the number that matters**: a case the baseline also
-passes proves the surface contributed nothing.
+Per run: build a scratch repo → run the agent headless in it under a
+prepared HOME → grade transcript + file state. Score = fraction of
+graders passed; case score = mean over RUNS (default 3). Report prints
+WITH / W/OUT / Δ per runtime — **Δ is the number that matters**: a case
+the baseline also passes proves the surface contributed nothing.
 
-The `without` arm runs the agent with `HOME` pointed at a skeleton dir
-(auth copied, `~/.agents/skills/` and `~/.config/devin/mcp_config.json`
-absent) — same model, no fafo surfaces.
+## Arms = prepared HOMEs
+
+Every agent CLI reads config from `$HOME/.<something>`. Each runtime
+adapter (`evals/runtimes/<name>.sh`) builds two fake HOMEs:
+
+- **with** — auth bits (symlinked) + the fafo skill in that runtime's
+  skill location + the MCP server in that runtime's config format
+- **without** — auth only, no fafo surfaces
+
+Same model, same prompt — the only variable is surface presence.
+
+## Runtime adapters
+
+`evals/runtimes/TEMPLATE.sh` documents the contract: `rt_fake_home
+<with|without>` + `rt_invoke <prompt> <cwd> <transcript> <home>`.
+
+Installed runtimes live in `evals/runtimes/*.sh`. Recon per new runtime:
+`<cli> --help` for the headless flag, `ls ~/.<tool>` for config layout,
+docs for its MCP config format. Quota-limited runtimes (e.g. claude's
+5h window) score 0 on dead-window runs — re-run that slice when the
+window resets; results accumulate per-run in `results/<ts>/results.jsonl`.
 
 ## Grader kinds (deterministic)
 
 | kind | check |
 |---|---|
-| `transcript_contains` | regex over exported transcript — tool calls, commands, agent's own words |
-| `file_contains` / `file_lacks` | regex over a fixture file after the run — markers gone? expected line present? |
-| `exit_code` | devin's exit status |
+| `transcript_contains` / `transcript_lacks` | regex over exported transcript — tool calls, commands, agent's own words |
+| `file_contains` / `file_lacks` | regex over a fixture file — markers gone? expected line present? |
+| `exit_code` | agent's exit status |
+
+Prefix `orN:` to OR-group graders — the group passes if any member does
+(used for "ended clean OR acknowledged leftover markers").
 
 ## The seams under test
 
@@ -45,3 +68,6 @@ absent) — same model, no fafo surfaces.
   agent must not claim done. The safety story is only real if agents
   respect it end-to-end
 - **apply path** — clean conflicts actually get resolved and written
+- **per-runtime variance** — same surfaces, different conventions: whose
+  skill format gets picked up, whose MCP config parses, whose agents
+  ignore all of it
