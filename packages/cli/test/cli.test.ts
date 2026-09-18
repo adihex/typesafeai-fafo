@@ -44,6 +44,13 @@ describe("cmdInstallMergetool", () => {
     const code = await cmdInstallMergetool({ local: true, cwd: dir });
     expect(code).toBe(2);
   });
+
+  it("rejects a --cmd that doesn't end in resolve \"$MERGED\"", async () => {
+    const dir = repo("badcmd");
+    const code = await cmdInstallMergetool({ local: true, cmd: "totally-bogus", cwd: dir });
+    expect(code).toBe(2);
+    expect(() => configGet(dir, "mergetool.fafo.cmd")).toThrow();
+  });
 });
 
 describe("renderEvalReport", () => {

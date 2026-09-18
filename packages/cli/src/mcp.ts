@@ -14,7 +14,7 @@ import { loadRepoEnv, makeAsker, resolveFiles, scanConflicts } from "./mcp-tools
 const SCAN_TOOL = {
   name: "fafo_scan",
   description:
-    "List files with unresolved git merge-conflict markers and how many conflict hunks each has. Read-only; needs no API key. Use to size up a merge before resolving.",
+    "List files with unresolved git merge-conflict markers and how many conflict hunks each has. Read-only; needs no API key. Use to size up a merge before resolving. Explicitly-requested files without markers are reported under 'skipped'.",
   inputSchema: {
     type: "object",
     properties: {
@@ -35,7 +35,7 @@ const SCAN_TOOL = {
 const RESOLVE_TOOL = {
   name: "fafo_resolve",
   description:
-    "Resolve git merge conflicts with TypeSafe Jev: code enumerates candidate resolutions (ours/theirs/both/union/base/drop/spliced), Jev picks and verifies, and only hunks passing confidence/coverage/verification gates are written. Escalated hunks keep their <<<<<<< markers for human or agent review — re-run fafo_scan to see what's left.",
+    "Resolve git merge conflicts with TypeSafe Jev: code enumerates candidate resolutions (ours/theirs/both/union/base/drop/spliced), Jev picks and verifies, and only hunks passing confidence/coverage/verification gates are written. Escalated hunks keep their <<<<<<< markers for human or agent review — re-run fafo_scan to see what's left. Each returned file carries a status (resolved|escalated|skipped-clean|error); explicitly-requested files without conflict markers land in the top-level 'skipped' array — skipped means nothing to do, not a failure.",
   inputSchema: {
     type: "object",
     properties: {

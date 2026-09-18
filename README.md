@@ -61,11 +61,14 @@ fafo-resolve resolve [files...]     # default: git's unmerged list
   --min-verify F      reject winner below this verify noul (default 0.5)
   --no-verify         skip per-candidate verification nouls
   --no-decompose      skip per-window retry on escalated hunks
+  --no-second-opinion skip the consistency re-ask on escalated hunks
+  --no-head-to-head   skip the top-two binary re-pick on coin-flip picks
+  --max-windows N     max sub-regions per hunk when decomposing (default 12)
   --model M           model override (default jev-latest)
 ```
 
-stderr narrates each hunk: `apply <candidate> (conf …, cov …)` or
-`ESCALATE <reason>`.
+stderr narrates each hunk: `✓ hunkN: <candidate> (conf … · cov …)` or
+`! hunkN: escalated — <reason>`.
 
 ### `install-mergetool` — wire into `git mergetool`
 
@@ -97,6 +100,7 @@ Optional `intents.json` sidecar (merge SHA → commit subjects) feeds
 
 ```sh
 fafo-resolve eval corpus.jsonl --json > eval.json
+  --concurrency N   parallel entries (default 8)
 ```
 
 Runs the resolver over the corpus and compares against recorded truth:
@@ -127,9 +131,13 @@ Two tools over the same pipeline and gates the CLI exposes:
 - **`fafo_resolve`** — resolve conflicts. `files` (repo-relative) or
   git's unmerged list; `check:true` dry-runs; `oursIntent`/`theirsIntent`
   improve picks. Returns per-hunk outcomes; escalations keep markers.
+  Each file carries a `status` — `resolved` / `escalated` /
+  `skipped-clean` / `error` — and explicitly-requested files with no
+  markers land in a top-level `skipped` array, so an empty result can't
+  be mistaken for a failure.
 
 Client config (MCP hosts don't get your shell env — the server falls back
-to the repo's `.env` for `TYPESAFE_API_KEY`):
+to the fafo repo's `.env` for `TYPESAFE_API_KEY`):
 
 ```json
 {

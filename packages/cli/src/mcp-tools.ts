@@ -37,12 +37,15 @@ export function makeAsker(): Asker {
 export interface ScanResult {
   files: { path: string; hunks: number }[];
   totalHunks: number;
+  /** Explicitly-requested files with no conflict markers (or unreadable). */
+  skipped: string[];
 }
 
 /** Conflicted files + hunk counts. No API key needed — pure parsing. */
 export function scanConflicts(cwd: string, files?: string[]): ScanResult {
   const paths = files?.length ? files : conflictedPaths(cwd);
   const out: ScanResult["files"] = [];
+  const skipped: string[] = [];
   let totalHunks = 0;
   for (const file of paths) {
     const abs = resolvePath(cwd, file);
@@ -50,14 +53,18 @@ export function scanConflicts(cwd: string, files?: string[]): ScanResult {
     try {
       text = readFileSync(abs, "utf8");
     } catch {
+      skipped.push(file);
       continue;
     }
-    if (!hasConflictMarkers(text)) continue;
+    if (!hasConflictMarkers(text)) {
+      skipped.push(file);
+      continue;
+    }
     const parsed = parseConflicts(text);
     out.push({ path: file, hunks: parsed.hunks.length });
     totalHunks += parsed.hunks.length;
   }
-  return { files: out, totalHunks };
+  return { files: out, totalHunks, skipped };
 }
 
 export interface McpResolveOpts extends ResolveOptions {
@@ -69,6 +76,9 @@ export interface McpResolveOpts extends ResolveOptions {
 
 export interface FileReport {
   file: string;
+  /** resolved = all hunks applied; escalated = markers remain;
+   *  skipped-clean = no conflict markers found; error = unreadable. */
+  status: "resolved" | "escalated" | "skipped-clean" | "error";
   applied: number;
   escalated: number;
   /** Jev token spend across all asks for this file, when the asker reports it. */
@@ -90,6 +100,8 @@ export interface McpResolveResult {
   escalated: number;
   written: string[];
   markersLeftIn: string[];
+  /** Explicitly-requested files skipped because they carry no markers. */
+  skipped: string[];
   /** Total Jev token spend for the call, when reported. */
   usage: { input_tokens: number; output_tokens: number };
 }
@@ -106,6 +118,7 @@ export async function resolveFiles(
     escalated: 0,
     written: [],
     markersLeftIn: [],
+    skipped: [],
     usage: { input_tokens: 0, output_tokens: 0 },
   };
   for (const file of paths) {
@@ -116,13 +129,18 @@ export async function resolveFiles(
     } catch {
       result.files.push({
         file,
+        status: "error",
         applied: 0,
         escalated: 0,
         outcomes: [{ hunk: -1, action: "escalate", reason: "ask-failed", error: "unreadable file" }],
       });
       continue;
     }
-    if (!hasConflictMarkers(text)) continue;
+    if (!hasConflictMarkers(text)) {
+      result.skipped.push(file);
+      result.files.push({ file, status: "skipped-clean", applied: 0, escalated: 0, outcomes: [] });
+      continue;
+    }
     const res = await resolveText(text, ask, { ...o, filePath: file });
     result.applied += res.applied;
     result.escalated += res.escalated;
@@ -138,6 +156,7 @@ export async function resolveFiles(
     result.usage.output_tokens += usage.output_tokens;
     result.files.push({
       file,
+      status: res.escalated > 0 ? "escalated" : "resolved",
       applied: res.applied,
       escalated: res.escalated,
       ...(usage.input_tokens || usage.output_tokens ? { usage } : {}),

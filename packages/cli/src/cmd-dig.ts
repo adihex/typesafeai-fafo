@@ -112,8 +112,9 @@ export async function cmdDig(o: {
     const mt = git(["merge-tree", "--write-tree", p1, p2], o.repo);
     if (mt.code !== 1) continue; // 0=clean, 1=conflicts, other=error — only 1 teaches us anything
     const { conflicts } = parseMergeTree(mt.out);
+    const conflictedFiles = new Set(conflicts.map((c) => c.path)).size;
     console.error(
-      `${progress(mi + 1, merges.length, startedAt)} ${merge.slice(0, 8)}: ${conflicts.length} conflicted file(s)`,
+      `${progress(mi + 1, merges.length, startedAt)} ${merge.slice(0, 8)}: ${conflictedFiles} conflicted file(s)`,
     );
 
     for (const { path, conflicted } of rebuildConflictedFiles(

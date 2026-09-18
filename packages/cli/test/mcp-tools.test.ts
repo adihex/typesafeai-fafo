@@ -48,6 +48,7 @@ describe("scanConflicts", () => {
     const res = scanConflicts(TMP, ["conflicted.ts", "clean.ts", "missing.ts"]);
     expect(res.files).toEqual([{ path: "conflicted.ts", hunks: 1 }]);
     expect(res.totalHunks).toBe(1);
+    expect(res.skipped).toEqual(["clean.ts", "missing.ts"]);
   });
 });
 
@@ -74,6 +75,20 @@ describe("resolveFiles", () => {
     expect(readFileSync(join(TMP, "dry.ts"), "utf8")).toContain("<<<<<<< HEAD");
   });
 
+  it("marks non-conflicted explicit files skipped-clean, not silent", async () => {
+    writeFileSync(join(TMP, "clean-resolve.ts"), "export const y = 2;\n");
+    writeFileSync(join(TMP, "conflicted-resolve.ts"), CONFLICT);
+    const res = await resolveFiles(
+      { cwd: TMP, files: ["clean-resolve.ts", "conflicted-resolve.ts", "gone.ts"] },
+      stubAsk,
+    );
+    expect(res.skipped).toEqual(["clean-resolve.ts"]);
+    const byFile = Object.fromEntries(res.files.map((f) => [f.file, f.status]));
+    expect(byFile["clean-resolve.ts"]).toBe("skipped-clean");
+    expect(byFile["conflicted-resolve.ts"]).toBe("resolved");
+    expect(byFile["gone.ts"]).toBe("error");
+  });
+
   it("keeps markers when Jev escalates", async () => {
     const lowCov: Asker = async () => ({
       ...passingResult(),
@@ -89,6 +104,7 @@ describe("resolveFiles", () => {
     );
     expect(res.escalated).toBe(1);
     expect(res.markersLeftIn).toEqual(["esc.ts"]);
+    expect(res.files[0].status).toBe("escalated");
     expect(readFileSync(join(TMP, "esc.ts"), "utf8")).toContain(">>>>>>> feature");
   });
 });

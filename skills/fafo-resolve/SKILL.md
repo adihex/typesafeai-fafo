@@ -25,13 +25,14 @@ fafo-resolve resolve        # resolves every unmerged file
 
 Per-file stderr output tells you the outcome of each hunk:
 
-- `apply <candidate> (conf …, cov …)` — done. The candidate's lines replaced
-  the conflicted region.
-- `ESCALATE <reason>` — Jev declined. The `<<<<<<<`/`=======`/`>>>>>>>`
-  markers are still in the file; resolve that hunk yourself.
+- `✓ hunkN: <candidate> (conf … · cov …)` — done. The candidate's lines
+  replaced the conflicted region.
+- `! hunkN: escalated — <reason>` — Jev declined. The `<<<<<<<`/`=======`/
+  `>>>>>>>` markers are still in the file; resolve that hunk yourself.
 
 Exit code: `0` when every hunk applied, `1` when anything escalated —
 safe to use as a gate in scripts and `&&` chains (e.g. `resolve && git add`).
+`2` means usage/environment error (no repo, unreadable file, bad flag).
 
 Finishing up after a run:
 
@@ -58,6 +59,9 @@ what's left.
 - `--ours-intent T` / `--theirs-intent T` — tell Jev what each side was
   trying to do (commit message, PR description). Better picks.
 - `--no-decompose` — skip the per-window retry on escalated hunks.
+- `--no-second-opinion` — skip the consistency re-ask on escalated hunks.
+- `--no-head-to-head` — skip the top-two binary re-pick on coin-flip picks.
+- `--max-windows N` — cap sub-regions per hunk when decomposing (default 12).
 
 ## Corpus tooling (context, not day-to-day)
 
@@ -80,8 +84,13 @@ stage and escalations stay unmerged.
 - `fafo_scan` — list conflicted files + hunk counts (read-only, no key).
 - `fafo_resolve` — the resolve pipeline; `check:true` is a dry run.
 
+`fafo_resolve` results carry a per-file `status`
+(`resolved`/`escalated`/`skipped-clean`/`error`) plus a top-level
+`skipped` array — files you asked for that had no conflict markers.
+`skipped-clean` means nothing to do, not a failure.
+
 Client config (env inherits TYPESAFE_API_KEY, or the server reads the
-repo's .env itself):
+fafo repo's .env itself — the repo cli.ts lives in, not your project's):
 
 ```json
 { "command": "fafo-resolve", "args": ["mcp"] }

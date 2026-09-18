@@ -49,6 +49,14 @@ export async function cmdInstallMergetool(o: InstallMergetoolOpts): Promise<numb
     }
   }
 
+  if (o.cmd && !o.cmd.trimEnd().endsWith('resolve "$MERGED"')) {
+    console.error(
+      `--cmd must end with 'resolve "$MERGED"' (got: ${o.cmd}) — ` +
+        `git invokes it as <cmd> and the exit code is the per-file verdict.`,
+    );
+    return 2;
+  }
+
   const cmd = o.cmd ?? resolveCmd();
   const entries: Array<[string, string]> = [
     ["merge.tool", "fafo"],
