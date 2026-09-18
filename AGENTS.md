@@ -29,8 +29,10 @@ Live calls need `TYPESAFE_API_KEY`. `git merge-tree --write-tree` exits 1 on
 conflicts (that's the harvestable case, not an error).
 
 Integrations: `install-mergetool` registers fafo for `git mergetool`
-(exit 0 = file resolved, nonzero = still conflicted); lazygit block in
-`docs/lazygit.md`; agent skill in `skills/fafo-resolve/`.
+(exit 0 = file resolved, nonzero = still conflicted); `resolve --threeway`
+speaks the `$BASE $OURS $THEIRS $OUT` contract for `jj resolve` (config in
+`docs/jj.md`); lazygit block in `docs/lazygit.md`; hunk extension in
+`integrations/hunk/fafo.ts`; agent skill in `skills/fafo-resolve/`.
 
 ## Known limits
 

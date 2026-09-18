@@ -11,6 +11,8 @@ const USAGE = `fafo-resolve — merge conflicts adjudicated by TypeSafe Jev
 
 usage:
   fafo-resolve resolve [files...]     resolve conflicted files (default: git's unmerged list)
+  fafo-resolve resolve --threeway <base> <ours> <theirs> <out>
+                                    3-way resolve for mergetool/jj-style tools
   fafo-resolve install-mergetool      register fafo as git's mergetool
   fafo-resolve dig <repo>             harvest conflict corpus from a repo's merge history
   fafo-resolve dig <repo> --prs       harvest conflicts from every OPEN pull request (needs gh)
@@ -93,6 +95,7 @@ async function main(): Promise<number> {
       show: { type: "boolean", short: "s" },
       local: { type: "boolean" },
       diff3: { type: "boolean" },
+      threeway: { type: "boolean" },
       cmd: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
@@ -125,6 +128,7 @@ async function main(): Promise<number> {
         ...shared,
         files: positionals,
         check: values.check ?? false,
+        threeway: values.threeway ?? false,
         verbose: values.verbose ?? false,
         quiet: values.quiet ?? false,
         show: values.show ?? false,

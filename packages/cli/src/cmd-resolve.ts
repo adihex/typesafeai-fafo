@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
@@ -29,10 +30,61 @@ export interface ResolveCliOpts extends ResolveOptions {
   quiet?: boolean;
   /** Print the resolved lines under each applied hunk (review aid). */
   show?: boolean;
+  /** files = [base, ours, theirs, output] — mergetool/jj-resolve convention. */
+  threeway?: boolean;
   cwd: string;
 }
 
+/** Build a marked-up conflict file from three clean sides via git merge-file. */
+function mergeFile3(base: string, ours: string, theirs: string): string {
+  try {
+    return execFileSync(
+      "git",
+      [
+        "merge-file",
+        "-p",
+        "--diff3",
+        "-L", "ours",
+        "-L", "base",
+        "-L", "theirs",
+        ours,
+        base,
+        theirs,
+      ],
+      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+    );
+  } catch (e) {
+    // exit 1 = conflicts found (stdout still carries the marked-up file)
+    const err = e as { status?: number; stdout?: string; stderr?: string };
+    if (err.status === 1 && typeof err.stdout === "string") return err.stdout;
+    throw new Error(`git merge-file failed: ${err.stderr ?? e}`);
+  }
+}
+
 export async function cmdResolve(o: ResolveCliOpts): Promise<number> {
+  if (o.threeway) {
+    const [base, ours, theirs, output] = o.files;
+    if (!base || !ours || !theirs || !output) {
+      console.error("--threeway needs: <base> <ours> <theirs> <output>");
+      return 2;
+    }
+    const marked = mergeFile3(base, ours, theirs);
+    if (!hasConflictMarkers(marked)) {
+      if (!o.check) writeFileSync(output, marked);
+      return 0;
+    }
+    const client = new TypeSafeClient();
+    const ask: Asker = (req) => client.systemOne(req) as never;
+    const res = await resolveText(marked, ask, { ...o, filePath: output });
+    if (!o.json) {
+      for (const x of res.outcomes) console.error(`  ${fmtOutcome(x.hunkIndex, x.decision)}`);
+    } else {
+      console.log(JSON.stringify({ applied: res.applied, escalated: res.escalated }));
+    }
+    if (!o.check) writeFileSync(output, res.text);
+    return res.escalated ? 1 : 0;
+  }
+
   const files = o.files.length ? o.files : conflictedPaths(o.cwd);
   if (!files.length) {
     console.error("no conflicted files");
