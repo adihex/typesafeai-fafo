@@ -59,6 +59,7 @@ async function main(): Promise<number> {
       out: { type: "string" },
       limit: { type: "string" },
       concurrency: { type: "string" },
+      record: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -95,7 +96,7 @@ async function main(): Promise<number> {
     case "eval": {
       const corpus = positionals[0];
       if (!corpus) throw new Error("eval needs a corpus.jsonl path");
-      return cmdEval({ ...shared, corpus, cwd: process.cwd(), concurrency: num(values.concurrency, 8) });
+      return cmdEval({ ...shared, corpus, cwd: process.cwd(), concurrency: num(values.concurrency, 8), record: values.record });
     }
     default:
       console.error(`unknown command: ${cmd}\n`);

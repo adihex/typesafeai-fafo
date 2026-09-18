@@ -89,7 +89,8 @@ export function interpret(
     (ver !== undefined && ver < STRONG_FLOOR) ||
     conf < STRONG_FLOOR;
 
-  if (strong || fails.length >= 2) {
+  const minFails = opts.vetoSingleFail ? 1 : 2;
+  if (strong || fails.length >= minFails) {
     fails.sort((a, b) => a.value - b.value);
     return escalate(fails[0].reason);
   }

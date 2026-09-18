@@ -140,6 +140,8 @@ export interface ResolveOptions extends HunkContext {
   headToHead?: boolean;
   /** Max windows a hunk may split into before giving up. Default 12. */
   maxWindows?: number;
+  /** Escalate on ANY single sub-threshold signal instead of requiring two. Default false. */
+  vetoSingleFail?: boolean;
 }
 
 /** The one impure seam: everything else in core is pure. */

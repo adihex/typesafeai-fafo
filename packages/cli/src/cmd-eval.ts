@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { resolveText, type Asker, type ResolveOptions } from "@fafo/core";
@@ -35,6 +35,7 @@ export async function cmdEval(o: {
   cwd: string;
   json?: boolean;
   concurrency?: number;
+  record?: string;
 } & ResolveOptions): Promise<number> {
   const entries = readFileSync(o.corpus, "utf8")
     .split("\n")
@@ -46,7 +47,14 @@ export async function cmdEval(o: {
   }
 
   const client = new TypeSafeClient();
-  const ask: Asker = (req) => client.systemOne(req) as never;
+  const base: Asker = (req) => client.systemOne(req) as never;
+  const ask: Asker = o.record
+    ? async (req) => {
+        const res = await base(req);
+        appendFileSync(o.record!, JSON.stringify({ req, res }) + "\n");
+        return res;
+      }
+    : base;
   const intents = loadIntents(o.corpus);
   const rows: unknown[] = new Array(entries.length);
   let correct = 0;
