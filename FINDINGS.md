@@ -5,6 +5,23 @@ Surfaces under test: `skills/fafo-resolve` (SKILL.md) + `fafo-resolve mcp` (stdi
 Harness: `evals/run.sh` — fake-HOME ablation, WITH (skill+MCP) vs W/OUT (auth only), Δ is the signal.
 Metrics: `evals/lib/metrics.py` extracts per-row tokens/steps/tool-calls/`skill_fired`/`mcp_called`.
 
+## Headline: final matrix (RUNS=3, evals/results/2026-09-18T14-50-36)
+
+| runtime | mean Δscore | skill fired (WITH) | MCP called | verdict |
+|---|---|---|---|---|
+| codex | **+0.28** | 12/12 | 2/12 | works — fafo surfaces lift every case |
+| grok | **+0.28** | n/a (no skill convention) | 10/12 | flagship — live `fafo_scan`/`fafo_resolve` |
+| pi | **+0.28** | 12/12 | 0/12 | works via skill; MCP lazy-never-invoked |
+| droid | **+0.22** | 10/12 | 0/12 | works via skill (stochastic on inventory) |
+| omp | +0.00 | 0/12 | 0/12 | native `conflict://` surface; fafo adds nothing |
+| agy, cmd, copilot, kilo, kiro-cli | +0.00 | — | — | auth gaps (timeouts / login-required exits) |
+| crush | +0.00 | — | — | config gap — no providers |
+| cursor-agent | +0.00 | — | — | binary missing (exit 127) |
+
+WITH ≥ WITHOUT on every case of every working runtime; WITH=1.00 on
+nearly every run. Blocked runtimes show Δ=0 with identical arms — the
+fixture's partial credit explains their nonzero absolute scores.
+
 ## Correction: final-message transcripts hid the surfaces
 
 Early runs captured only each agent's final message — "never mentioned fafo"
