@@ -22,3 +22,18 @@ conflicts (that's the harvestable case, not an error).
 
 Later: register as mergetool —
 `git config --global mergetool.fafo.cmd 'fafo-resolve resolve $MERGED'`
+
+## Known limits
+
+- **Human-edit class**: some truths are hand-written edits no enumerated
+  candidate can express — not ours/theirs/both/union/base/drop, and not
+  any keep/drop subset of the union. ~9 entries on the diverse corpus.
+  These are the escalation floor BY DESIGN: Jev selects, it never writes,
+  so unenumerable resolutions correctly stay marked for a human. Do not
+  chase them with more machinery — a resolver that generates code to match
+  them is a different (and less trustworthy) product.
+- **Composition misfires**: per-line splices can apply confidently wrong
+  when the union lacks the needed lines — splice-verify does not
+  discriminate for composed candidates. Mitigations in place: decisiveness
+  gate (mean |keep-0.5| >= 0.2), novel-subset filter, drop audit over the
+  lines a composition omits.
