@@ -124,5 +124,5 @@ console.log(JSON.stringify({
   filesAllInherited_falseVeto: files.filter(([, s]) => s.created === 0).length,
   filesWithCreated_realDefect: anyCreated.length,
 }, null, 2));
-for (const [k, s] of anyCreated.slice(0, 25)) console.log(`created\t${k}\tcreated=${s.created} inherited=${s.inherited}`);
-for (const [k, s] of files.filter(([, s]) => s.created === 0).slice(0, 15)) console.log(`inherited\t${k}\tinherited=${s.inherited}`);
+for (const [k, s] of anyCreated) console.log(`created\t${k}\tcreated=${s.created} inherited=${s.inherited}`);
+for (const [k, s] of files.filter(([, s]) => s.created === 0)) console.log(`inherited\t${k}\tinherited=${s.inherited}`);
