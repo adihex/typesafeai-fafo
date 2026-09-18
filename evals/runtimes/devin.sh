@@ -32,11 +32,16 @@ EOF
 }
 
 rt_invoke() { # <prompt-file> <cwd> <transcript-out> <home>
+  # NB: no --sandbox — it blocks tsx's IPC pipe AND egress to the TypeSafe
+  # API, so agents under it cannot run the CLI or reach Jev (measured:
+  # the agent burned a whole turn on workarounds, resolved nothing).
+  # dangerous + throwaway fixture dir is the containment story instead.
   (
     cd "$2" || exit 1
     HOME="$4" TYPESAFE_API_KEY="${TYPESAFE_API_KEY:-}" devin -p \
       --export "$3" \
-      --sandbox \
+      --model "${FAFO_EVAL_MODEL:-swe-2-max}" \
+      --permission-mode dangerous \
       -- "$(cat "$1")" >"$3.stdout" 2>"$3.stderr"
   )
 }
