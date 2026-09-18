@@ -220,17 +220,27 @@ async function resolveHunkDecomposed(
           ),
         );
         usage = addUsage(usage, r3.usage);
+        const nouls = askLines.map((_, i) => {
+          const a = r3.answers[`keep_${i}`];
+          return a?.type === "noul" ? (a as { noul: number }).noul : undefined;
+        });
         const kept = askLines
-          .filter((_, i) => {
-            const a = r3.answers[`keep_${i}`];
-            return a?.type === "noul" && (a as { noul: number }).noul >= 0.5;
-          })
+          .filter((_, i) => nouls[i] !== undefined && nouls[i]! >= 0.5)
           .map((x) => x.line);
+        // A composition built of confident line decisions is a real answer;
+        // one built of ~0.5 coin-flips is noise — gate on decisiveness.
+        const margins = nouls
+          .filter((n): n is number => n !== undefined)
+          .map((n) => Math.abs(n - 0.5));
+        const meanMargin = margins.length
+          ? margins.reduce((s, x) => s + x, 0) / margins.length
+          : 0;
         // Only a genuine subset earns the apply — when keep/drop re-derives
         // an existing flat candidate it adds no information, and the flat
         // ask already declined to pick it.
         const isSubset =
           kept.length > 0 &&
+          meanMargin >= 0.2 &&
           candidates.every(
             (c) => c.lines.join("\n") !== kept.join("\n"),
           );
@@ -506,12 +516,11 @@ export async function resolveText(
             buildPerLineRequest(parsed, hunk, asked, opts, opts),
           );
           usage = addUsage(usage, r4.usage);
-          const keep = asked.map((_, i) => {
+          const nouls = asked.map((_, i) => {
             const a = r4.answers[`keep_${i}`];
-            return a?.type === "noul"
-              ? (a as { noul: number }).noul >= 0.5
-              : false;
+            return a?.type === "noul" ? (a as { noul: number }).noul : undefined;
           });
+          const keep = nouls.map((n) => n !== undefined && n >= 0.5);
           const lines = slots.flatMap((s) =>
             typeof s[0] === "string"
               ? (s as string[])
@@ -519,11 +528,20 @@ export async function resolveText(
                   .filter((i) => keep[i])
                   .map((i) => asked[i].line),
           );
+          // Decisiveness gate: a composition of confident line decisions is
+          // a real answer; one of ~0.5 coin-flips is noise.
+          const margins = nouls
+            .filter((n): n is number => n !== undefined)
+            .map((n) => Math.abs(n - 0.5));
+          const meanMargin = margins.length
+            ? margins.reduce((s, x) => s + x, 0) / margins.length
+            : 0;
           // Only apply a composition that differs from every flat
           // candidate — re-deriving a pick the gates already rejected
           // (or the discard audit just vetoed) adds no information.
           const novel =
             lines.length > 0 &&
+            meanMargin >= 0.2 &&
             candidates.every((c) => c.lines.join("\n") !== lines.join("\n"));
           if (novel) {
             let spliceScore: number | undefined;
