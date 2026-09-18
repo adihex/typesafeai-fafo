@@ -1,6 +1,6 @@
 #!/usr/bin/env -S npx tsx
 import { parseArgs } from "node:util";
-import { cmdDig } from "./cmd-dig.ts";
+import { cmdDig, cmdDigPrs } from "./cmd-dig.ts";
 import { cmdEval } from "./cmd-eval.ts";
 import { cmdResolve } from "./cmd-resolve.ts";
 
@@ -9,6 +9,7 @@ const USAGE = `fafo-resolve — merge conflicts adjudicated by TypeSafe Jev
 usage:
   fafo-resolve resolve [files...]   resolve conflicted files (default: git's unmerged list)
   fafo-resolve dig <repo>           harvest conflict corpus from a repo's merge history
+  fafo-resolve dig <repo> --prs     harvest conflicts from every OPEN pull request
   fafo-resolve eval <corpus.jsonl>  score the resolver against dug ground truth
 
 resolve options:
@@ -27,7 +28,9 @@ resolve options:
 
 dig options:
   --out FILE        append JSONL corpus to file (default: stdout)
-  --limit N         max merge commits to scan (default 50)
+  --limit N         max merge commits (or PRs, with --prs) to scan (default 50 / 200)
+  --prs             dig open pull requests instead of merge history (needs gh)
+  --no-fetch        with --prs: skip the refs/pull/*/head fetch
 
 eval takes the same threshold flags plus --json.
 
@@ -56,6 +59,8 @@ async function main(): Promise<number> {
       model: { type: "string" },
       out: { type: "string" },
       limit: { type: "string" },
+      prs: { type: "boolean" },
+      "no-fetch": { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -85,6 +90,8 @@ async function main(): Promise<number> {
     case "dig": {
       const repo = positionals[0];
       if (!repo) throw new Error("dig needs a repo path");
+      if (values.prs)
+        return cmdDigPrs({ repo, out: values.out, limit: num(values.limit, 200), fetch: !values["no-fetch"] });
       return cmdDig({ repo, out: values.out, limit: num(values.limit, 50) });
     }
     case "eval": {

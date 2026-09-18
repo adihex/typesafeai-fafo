@@ -54,15 +54,25 @@ export async function cmdEval(o: {
 
   for (const e of entries) {
     const intent = intents[e.merge];
+    const isPr = e.pr !== undefined;
     const res = await resolveText(e.conflicted, ask, {
       ...o,
       filePath: e.path,
       oursIntent: intent ? `${intent.msg} — ours-side tip: ${intent.ours}` : e.oursLabel,
-      theirsIntent: intent ? `${intent.msg} — theirs-side tip: ${intent.theirs}` : e.theirsLabel,
+      theirsIntent: intent
+        ? `${intent.msg} — theirs-side tip: ${intent.theirs}`
+        : isPr && e.title
+          ? `PR #${e.pr} into ${e.base}: ${e.title}`
+          : e.theirsLabel,
     });
 
     let verdict: string;
-    if (e.resolved === null) {
+    if (isPr && e.resolved === null) {
+      // Open PR: no recorded human resolution — verdict is apply vs escalate.
+      verdict = res.escalated > 0 ? "escalated" : "applied";
+      if (res.escalated > 0) escalated++;
+      else resolvedByUs++;
+    } else if (e.resolved === null) {
       verdict = res.escalated > 0 ? "escalated (file deleted in truth)" : "applied (truth: deleted)";
       if (res.escalated > 0) escalated++;
     } else if (res.escalated > 0) {
@@ -76,7 +86,8 @@ export async function cmdEval(o: {
     }
 
     rows.push({
-      merge: e.merge.slice(0, 8),
+      merge: e.merge,
+      ...(isPr ? { pr: e.pr, title: e.title, base: e.base } : {}),
       path: e.path,
       applied: res.applied,
       escalated: res.escalated,
@@ -85,12 +96,14 @@ export async function cmdEval(o: {
         action: x.decision.action,
         candidate: x.decision.candidate?.kind,
         reason: x.decision.reason,
+        wholeHunkReason: x.decision.detail.wholeHunkReason,
+        windows: x.decision.detail.windows?.length,
         error: x.decision.detail.error,
         conf: x.decision.detail.confidence,
         cov: x.decision.detail.coverage,
       })),
     });
-    if (!o.json) console.error(`${e.merge.slice(0, 8)} ${e.path}: ${verdict}`);
+    if (!o.json) console.error(`${e.merge.slice(0, 16)} ${e.path}: ${verdict}`);
   }
 
   const summary = {
