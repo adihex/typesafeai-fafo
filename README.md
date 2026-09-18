@@ -78,8 +78,9 @@ fafo-resolve install-mergetool          # global (user) config
 
 Writes `merge.tool=fafo`, `mergetool.fafo.cmd`, `trustExitCode=true`.
 Then `git mergetool` calls `resolve` once per conflicted file as
-`$MERGED`: exit 0 stages it (git drops a `<file>.orig` backup unless
-`mergetool.keepBackup=false`), nonzero leaves it unmerged.
+`$MERGED`: exit 0 stages it (git keeps the pre-tool file as
+`<file>.orig` unless `mergetool.keepBackup=false`), nonzero leaves it
+unmerged with markers intact.
 
 ### `dig` — harvest conflict corpora
 

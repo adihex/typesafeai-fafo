@@ -72,10 +72,10 @@ next steps:
   3. per file, exit 0 marks it resolved; escalated hunks keep their
      markers and git leaves the file unmerged. Re-run after edits.
 
-backups: git writes <file>.orig before invoking the tool. To drop them
-  after a successful resolve:
+backups: after a successful resolve, git keeps the pre-tool file as
+  <file>.orig. To drop it instead:
     git config ${scope} mergetool.keepBackup false
-  (default keeps them; a still-conflicted file keeps its .orig either way.)
+  (on failure git restores the conflicted file — no .orig is left behind.)
 ${
   o.diff3
     ? "diff3: merge.conflictStyle=diff3 set."
