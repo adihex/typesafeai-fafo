@@ -173,7 +173,6 @@ export async function cmdEval(o: {
               conf: w.confidence,
               cov: w.coverage,
             })),
-            wholeHunkReason: x.decision.detail.wholeHunkReason,
           })),
         };
         done++;
