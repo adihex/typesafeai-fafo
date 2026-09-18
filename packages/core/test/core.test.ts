@@ -352,7 +352,7 @@ tail
       }
       return pickResult("ours", { [COVERED]: { type: "noul", noul: 0.1 } });
     };
-    const res = await resolveText(INTERLEAVED, ask);
+    const res = await resolveText(INTERLEAVED, ask, { perLine: false });
     expect(res.escalated).toBe(1);
     expect(res.outcomes[0].decision.detail.wholeHunkReason).toBe("not-in-candidates");
     expect(hasConflictMarkers(res.text)).toBe(true);
@@ -364,7 +364,11 @@ tail
       calls++;
       return pickResult("ours", { [COVERED]: { type: "noul", noul: 0.1 } });
     };
-    await resolveText(INTERLEAVED, ask, { decompose: false, secondOpinion: false });
+    await resolveText(INTERLEAVED, ask, {
+      decompose: false,
+      secondOpinion: false,
+      perLine: false,
+    });
     expect(calls).toBe(1);
   });
 
@@ -392,7 +396,76 @@ tail
         ? pickResult("ours", { [COVERED]: { type: "noul", noul: 0.1 } })
         : pickResult("theirs", { [COVERED]: { type: "noul", noul: 0.95 } });
     };
-    const res = await resolveText(INTERLEAVED, ask, { decompose: false });
+    const res = await resolveText(INTERLEAVED, ask, {
+      decompose: false,
+      perLine: false,
+    });
     expect(res.escalated).toBe(1);
+  });
+
+  it("falls back to a head-to-head between the top-2 candidates", async () => {
+    let calls = 0;
+    const ask: Asker = async () => {
+      calls++;
+      if (calls === 1) {
+        return {
+          model: "jev-test",
+          answers: {
+            [PICK]: {
+              type: "choice",
+              choice: "ours",
+              confidence: 0.9,
+              probabilities: { ours: 0.4, theirs: 0.35, base: 0.25 },
+            },
+            [COVERED]: { type: "noul", noul: 0.1 },
+          } as never,
+          usage: { input_tokens: 1, output_tokens: 1 },
+        };
+      }
+      return pickResult("ours");
+    };
+    const res = await resolveText(INTERLEAVED, ask, {
+      decompose: false,
+      secondOpinion: false,
+    });
+    expect(calls).toBe(2);
+    expect(res.applied).toBe(1);
+    expect(res.outcomes[0].decision.detail.headToHead).toBe(true);
+    expect(res.outcomes[0].decision.candidate?.kind).toBe("ours");
+  });
+
+  it("composes a resolution by per-line keep/drop as a last resort", async () => {
+    const ask: Asker = async (req) => {
+      const q = req.questions as Record<string, unknown>;
+      if (q["keep_0"]) {
+        const answers: Record<string, unknown> = {};
+        // keep_0: import{a} ours, keep_1: import{a,b} theirs,
+        // keep_2: callOurs ours, keep_3: callTheirs theirs, keep_4: extra theirs
+        for (const [i, n] of [0.9, 0.1, 0.8, 0.9, 0.1].entries()) {
+          answers[`keep_${i}`] = { type: "noul", noul: n };
+        }
+        return { model: "jev-test", answers: answers as never, usage: { input_tokens: 1, output_tokens: 1 } };
+      }
+      if (q["verify_spliced"]) {
+        return {
+          model: "jev-test",
+          answers: { verify_spliced: { type: "noul", noul: 0.8 } } as never,
+          usage: { input_tokens: 1, output_tokens: 1 },
+        };
+      }
+      return pickResult("ours", { [COVERED]: { type: "noul", noul: 0.1 } });
+    };
+    const res = await resolveText(INTERLEAVED, ask, {
+      decompose: false,
+      secondOpinion: false,
+    });
+    expect(res.applied).toBe(1);
+    expect(res.outcomes[0].decision.detail.perLine).toBe(true);
+    expect(res.text).toContain('import { a } from "x";');
+    expect(res.text).toContain("shared();");
+    expect(res.text).toContain("callOurs();");
+    expect(res.text).toContain("callTheirs();");
+    expect(res.text).not.toContain("extra();");
+    expect(hasConflictMarkers(res.text)).toBe(false);
   });
 });

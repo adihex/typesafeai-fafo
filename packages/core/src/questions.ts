@@ -119,6 +119,33 @@ export function buildHunkRequest(
 }
 
 /**
+ * Last-resort composition ask: one keep/drop noul per non-shared union
+ * line. Shared (anchor) lines are not asked — they are in both versions.
+ * Lets Jev compose subsets no enumerated candidate can express.
+ */
+export function buildPerLineRequest(
+  parsed: ParsedConflicts,
+  hunk: ConflictHunk,
+  lines: Array<{ line: string; side: "ours" | "theirs" }>,
+  ctx: HunkContext,
+  opts: { model?: string } = {},
+): SystemOneRequest<Questions> {
+  const questions: Questions = {};
+  lines.forEach((l, i) => {
+    questions[`keep_${i}`] = noul({
+      instruction: `Should this exact line from ${l.side.toUpperCase()} appear in the correct resolution of the conflict? Yes if the resolved file should contain it, no if the resolution drops it.`,
+      line: l.line,
+    });
+  });
+  const request: SystemOneRequest<Questions> = {
+    state: buildState(parsed, hunk, ctx),
+    questions,
+  };
+  if (opts.model) request.model = opts.model;
+  return request;
+}
+
+/**
  * Verification ask for a stitched splice: one noul over the composed result
  * against the original whole hunk's context. Window-level verifies judge
  * parts; this judges the composition.
