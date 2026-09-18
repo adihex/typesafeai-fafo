@@ -9,6 +9,8 @@ failed coverage/verification escalates the hunk (markers stay in the file).
 - `packages/core` (`@fafo/core`) — headless lib. Everything is pure except
   the injected `Asker` (bound `TypeSafeClient.systemOne`).
 - `packages/cli` (`fafo-resolve`) — thin adapter: `resolve`, `dig`, `eval`.
+- `packages/vscode` (`fafo-resolve` ext) — VS Code UI: command + per-hunk
+  CodeLens + decision-log channel. esbuild bundles core to `dist/extension.cjs`.
 
 ## Commands
 
