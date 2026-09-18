@@ -126,6 +126,8 @@ export async function cmdEval(o: {
           applied: res.applied,
           escalated: res.escalated,
           verdict,
+          resolvedTruth: e.resolved,
+          resolvedOurs: res.applied > 0 ? res.text : null,
           hunks: res.outcomes.map((x) => ({
             action: x.decision.action,
             candidate: x.decision.candidate?.kind,
@@ -140,12 +142,20 @@ export async function cmdEval(o: {
             secondOpinion: x.decision.detail.secondOpinion,
             headToHead: x.decision.detail.headToHead,
             perLine: x.decision.detail.perLine,
+            ours: x.hunk.ours,
+            theirs: x.hunk.theirs,
+            base: x.hunk.base,
+            resolution:
+              x.decision.action === "apply" ? x.decision.candidate!.lines : null,
             windows: x.decision.detail.windows?.map((w) => ({
               i: w.index,
               pick: w.picked,
               act: w.action,
               rsn: w.reason,
+              conf: w.confidence,
+              cov: w.coverage,
             })),
+            wholeHunkReason: x.decision.detail.wholeHunkReason,
           })),
         };
         done++;
