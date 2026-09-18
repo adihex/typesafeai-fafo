@@ -2,14 +2,18 @@
 import { parseArgs } from "node:util";
 import { cmdDig } from "./cmd-dig.ts";
 import { cmdEval } from "./cmd-eval.ts";
+import { cmdInstallMergetool } from "./cmd-install-mergetool.ts";
+import { cmdReport } from "./cmd-report.ts";
 import { cmdResolve } from "./cmd-resolve.ts";
 
 const USAGE = `fafo-resolve — merge conflicts adjudicated by TypeSafe Jev
 
 usage:
-  fafo-resolve resolve [files...]   resolve conflicted files (default: git's unmerged list)
-  fafo-resolve dig <repo>           harvest conflict corpus from a repo's merge history
-  fafo-resolve eval <corpus.jsonl>  score the resolver against dug ground truth
+  fafo-resolve resolve [files...]     resolve conflicted files (default: git's unmerged list)
+  fafo-resolve install-mergetool      register fafo as git's mergetool
+  fafo-resolve dig <repo>             harvest conflict corpus from a repo's merge history
+  fafo-resolve eval <corpus.jsonl>    score the resolver against dug ground truth
+  fafo-resolve report <eval.json>     render eval output as a self-contained HTML report
 
 resolve options:
   --check             report decisions, write nothing
@@ -29,7 +33,14 @@ dig options:
   --out FILE        append JSONL corpus to file (default: stdout)
   --limit N         max merge commits to scan (default 50)
 
+install-mergetool options:
+  --local           write repo-local config (default: --global)
+  --diff3           also set merge.conflictStyle=diff3 (BASE section in conflicts)
+  --cmd 'CMD'       override the invoked command (must end with resolve "$MERGED")
+
 eval takes the same threshold flags plus --json.
+report options:
+  --out FILE        write HTML to file (default: stdout)
 
 env: TYPESAFE_API_KEY must be set.
 `;
@@ -56,6 +67,9 @@ async function main(): Promise<number> {
       model: { type: "string" },
       out: { type: "string" },
       limit: { type: "string" },
+      local: { type: "boolean" },
+      diff3: { type: "boolean" },
+      cmd: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -87,10 +101,22 @@ async function main(): Promise<number> {
       if (!repo) throw new Error("dig needs a repo path");
       return cmdDig({ repo, out: values.out, limit: num(values.limit, 50) });
     }
+    case "install-mergetool":
+      return cmdInstallMergetool({
+        local: values.local ?? false,
+        diff3: values.diff3 ?? false,
+        cmd: values.cmd,
+        cwd: process.cwd(),
+      });
     case "eval": {
       const corpus = positionals[0];
       if (!corpus) throw new Error("eval needs a corpus.jsonl path");
       return cmdEval({ ...shared, corpus, cwd: process.cwd() });
+    }
+    case "report": {
+      const input = positionals[0];
+      if (!input) throw new Error("report needs an eval.json path");
+      return cmdReport({ input, out: values.out });
     }
     default:
       console.error(`unknown command: ${cmd}\n`);

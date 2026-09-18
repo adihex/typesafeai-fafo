@@ -81,6 +81,8 @@ export async function cmdEval(o: {
       applied: res.applied,
       escalated: res.escalated,
       verdict,
+      resolvedTruth: e.resolved,
+      resolvedOurs: res.applied > 0 ? res.text : null,
       hunks: res.outcomes.map((x) => ({
         action: x.decision.action,
         candidate: x.decision.candidate?.kind,
@@ -88,6 +90,20 @@ export async function cmdEval(o: {
         error: x.decision.detail.error,
         conf: x.decision.detail.confidence,
         cov: x.decision.detail.coverage,
+        ours: x.hunk.ours,
+        theirs: x.hunk.theirs,
+        base: x.hunk.base,
+        resolution:
+          x.decision.action === "apply" ? x.decision.candidate!.lines : null,
+        windows: x.decision.detail.windows?.map((w) => ({
+          index: w.index,
+          picked: w.picked,
+          conf: w.confidence,
+          cov: w.coverage,
+          action: w.action,
+          reason: w.reason,
+        })),
+        wholeHunkReason: x.decision.detail.wholeHunkReason,
       })),
     });
     if (!o.json) console.error(`${e.merge.slice(0, 8)} ${e.path}: ${verdict}`);
