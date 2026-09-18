@@ -2,7 +2,7 @@ import { enumerateCandidates } from "./candidates.ts";
 import { decomposeHunk, type Element } from "./decompose.ts";
 import { interpret } from "./interpret.ts";
 import { parseConflicts } from "./parse.ts";
-import { buildHunkRequest, buildSpliceVerifyRequest, NOVEL, VERIFY_SPLICED } from "./questions.ts";
+import { buildHunkRequest, buildPerLineRequest, buildSpliceVerifyRequest, NOVEL, VERIFY_SPLICED } from "./questions.ts";
 import type {
   Asker,
   Candidate,
@@ -366,6 +366,90 @@ export async function resolveText(
           ) {
             d3.detail.headToHead = true;
             decision = d3;
+          }
+        }
+      }
+
+      // Per-line composition: last resort when no enumerated candidate can
+      // express the resolution. Keep/drop per non-shared union line
+      // (anchors are kept — they are in both versions), then the composed
+      // subset is verified like a splice.
+      if (
+        decision.action === "escalate" &&
+        (decision.reason === "not-in-candidates" ||
+          decision.reason === "novel-merge-needed") &&
+        opts.perLine !== false
+      ) {
+        const { elements } = decomposeHunk(hunk, 1);
+        const asked: Array<{ line: string; side: "ours" | "theirs" }> = [];
+        const slots: Array<string[] | number[]> = [];
+        for (const e of elements) {
+          if (e.kind === "anchor") {
+            slots.push(e.lines);
+            continue;
+          }
+          const idxs: number[] = [];
+          const seen = new Set(e.ours);
+          for (const l of e.ours) {
+            idxs.push(asked.length);
+            asked.push({ line: l, side: "ours" });
+          }
+          for (const l of e.theirs) {
+            if (seen.has(l)) continue;
+            idxs.push(asked.length);
+            asked.push({ line: l, side: "theirs" });
+          }
+          slots.push(idxs);
+        }
+        if (asked.length > 0 && asked.length <= 40) {
+          const r4 = await ask(
+            buildPerLineRequest(parsed, hunk, asked, opts, opts),
+          );
+          usage = addUsage(usage, r4.usage);
+          const keep = asked.map((_, i) => {
+            const a = r4.answers[`keep_${i}`];
+            return a?.type === "noul"
+              ? (a as { noul: number }).noul >= 0.5
+              : false;
+          });
+          const lines = slots.flatMap((s) =>
+            typeof s[0] === "string"
+              ? (s as string[])
+              : (s as number[])
+                  .filter((i) => keep[i])
+                  .map((i) => asked[i].line),
+          );
+          if (lines.length > 0) {
+            let spliceScore: number | undefined;
+            if (!opts.noVerify) {
+              const vr = await ask(
+                buildSpliceVerifyRequest(parsed, hunk, lines, opts, opts),
+              );
+              usage = addUsage(usage, vr.usage);
+              const a = vr.answers[VERIFY_SPLICED];
+              spliceScore =
+                a?.type === "noul" ? (a as { noul: number }).noul : undefined;
+            }
+            // Same strong-fail gate as window splices — 0.5 was measured to
+            // kill good compositions along with bad ones (it does not
+            // discriminate for composed candidates).
+            if (spliceScore === undefined || spliceScore >= 0.3) {
+              decision = {
+                action: "apply",
+                candidate: {
+                  kind: "spliced",
+                  description:
+                    "Line-level merge: composed by per-line keep/drop over the union.",
+                  lines,
+                },
+                detail: {
+                  verify:
+                    spliceScore !== undefined ? { spliced: spliceScore } : {},
+                  perLine: true,
+                  wholeHunkReason: decision.reason,
+                },
+              };
+            }
           }
         }
       }

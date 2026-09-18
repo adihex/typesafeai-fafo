@@ -107,12 +107,16 @@ export async function cmdEval(o: {
           hunks: res.outcomes.map((x) => ({
             action: x.decision.action,
             candidate: x.decision.candidate?.kind,
+            pick: x.decision.detail.picked,
+            margin: x.decision.detail.pickMargin,
+            verify: x.decision.detail.verify,
             reason: x.decision.reason,
             error: x.decision.detail.error,
             conf: x.decision.detail.confidence,
             cov: x.decision.detail.coverage,
             secondOpinion: x.decision.detail.secondOpinion,
             headToHead: x.decision.detail.headToHead,
+            perLine: x.decision.detail.perLine,
             windows: x.decision.detail.windows?.map((w) => ({
               i: w.index,
               pick: w.picked,

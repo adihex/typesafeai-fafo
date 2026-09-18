@@ -100,6 +100,8 @@ export interface Decision {
     secondOpinion?: boolean;
     /** Apply came from a head-to-head between the top-2 probable candidates. */
     headToHead?: boolean;
+    /** Apply came from per-line keep/drop composition over the union. */
+    perLine?: boolean;
   };
 }
 
@@ -138,6 +140,8 @@ export interface ResolveOptions extends HunkContext {
   minPickMargin?: number;
   /** After retries fail, ask a binary pick between the top-2 candidates. Default true. */
   headToHead?: boolean;
+  /** Last resort on expressiveness failures: per-line keep/drop over the union. Default true. */
+  perLine?: boolean;
   /** Max windows a hunk may split into before giving up. Default 12. */
   maxWindows?: number;
 }
