@@ -112,6 +112,7 @@ export async function cmdEval(o: {
             conf: x.decision.detail.confidence,
             cov: x.decision.detail.coverage,
             secondOpinion: x.decision.detail.secondOpinion,
+            headToHead: x.decision.detail.headToHead,
             windows: x.decision.detail.windows?.map((w) => ({
               i: w.index,
               pick: w.picked,

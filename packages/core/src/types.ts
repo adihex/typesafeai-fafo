@@ -98,6 +98,8 @@ export interface Decision {
     wholeHunkReason?: EscalationReason;
     /** Apply came from a consistent second sampling after a first-ask escalation. */
     secondOpinion?: boolean;
+    /** Apply came from a head-to-head between the top-2 probable candidates. */
+    headToHead?: boolean;
   };
 }
 
@@ -134,6 +136,8 @@ export interface ResolveOptions extends HunkContext {
   secondOpinion?: boolean;
   /** Top-2 pick probability gap below which the pick counts as a hedge. Default 0.1. */
   minPickMargin?: number;
+  /** After retries fail, ask a binary pick between the top-2 candidates. Default true. */
+  headToHead?: boolean;
   /** Max windows a hunk may split into before giving up. Default 12. */
   maxWindows?: number;
 }

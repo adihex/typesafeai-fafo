@@ -2,9 +2,10 @@ import { enumerateCandidates } from "./candidates.ts";
 import { decomposeHunk, type Element } from "./decompose.ts";
 import { interpret } from "./interpret.ts";
 import { parseConflicts } from "./parse.ts";
-import { buildHunkRequest, buildSpliceVerifyRequest, VERIFY_SPLICED } from "./questions.ts";
+import { buildHunkRequest, buildSpliceVerifyRequest, NOVEL, VERIFY_SPLICED } from "./questions.ts";
 import type {
   Asker,
+  Candidate,
   ConflictHunk,
   Decision,
   HunkOutcome,
@@ -308,6 +309,9 @@ export async function resolveText(
         }
       }
 
+      const wholeHunkProbs = decision.detail.probabilities;
+      const wholeHunkPicked = decision.detail.picked;
+
       if (opts.decompose !== false) {
         const covFail =
           decision.action === "apply" &&
@@ -330,6 +334,38 @@ export async function resolveText(
           if (retry) {
             decision = retry.decision;
             usage = addUsage(usage, retry.usage);
+          }
+        }
+      }
+
+      // Head-to-head: a binary pick between the top-2 whole-hunk candidates
+      // is a different elicitation than the N-way pick — sharper on
+      // borderline hunks that survived every other retry.
+      if (
+        decision.action === "escalate" &&
+        decision.reason !== "ask-failed" &&
+        opts.headToHead !== false &&
+        wholeHunkProbs
+      ) {
+        const top2 = Object.entries(wholeHunkProbs)
+          .filter(([k]) => k !== NOVEL)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 2)
+          .map(([k]) => candidates.find((c) => c.kind === k))
+          .filter((c): c is Candidate => !!c);
+        if (top2.length === 2) {
+          const r3 = await ask(buildHunkRequest(parsed, hunk, top2, opts, opts));
+          usage = addUsage(usage, r3.usage);
+          const d3 = interpret(r3, top2, opts);
+          // Apply only on confirmation: the binary pick must re-select the
+          // original top candidate — a flip to the runner-up is exactly the
+          // instability the gates were sensing.
+          if (
+            d3.action === "apply" &&
+            d3.candidate?.kind === wholeHunkPicked
+          ) {
+            d3.detail.headToHead = true;
+            decision = d3;
           }
         }
       }

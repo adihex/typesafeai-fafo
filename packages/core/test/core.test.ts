@@ -395,4 +395,35 @@ tail
     const res = await resolveText(INTERLEAVED, ask, { decompose: false });
     expect(res.escalated).toBe(1);
   });
+
+  it("falls back to a head-to-head between the top-2 candidates", async () => {
+    let calls = 0;
+    const ask: Asker = async () => {
+      calls++;
+      if (calls === 1) {
+        return {
+          model: "jev-test",
+          answers: {
+            [PICK]: {
+              type: "choice",
+              choice: "ours",
+              confidence: 0.9,
+              probabilities: { ours: 0.4, theirs: 0.35, base: 0.25 },
+            },
+            [COVERED]: { type: "noul", noul: 0.1 },
+          } as never,
+          usage: { input_tokens: 1, output_tokens: 1 },
+        };
+      }
+      return pickResult("ours");
+    };
+    const res = await resolveText(INTERLEAVED, ask, {
+      decompose: false,
+      secondOpinion: false,
+    });
+    expect(calls).toBe(2);
+    expect(res.applied).toBe(1);
+    expect(res.outcomes[0].decision.detail.headToHead).toBe(true);
+    expect(res.outcomes[0].decision.candidate?.kind).toBe("ours");
+  });
 });
