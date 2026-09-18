@@ -49,7 +49,12 @@ for rt in $RUNTIMES; do
         score_json=$(evals/lib/grade.py "$dir" "$scratch" "$transcript" "$code" 2>/dev/null)
         score=$(echo "$score_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['score'])" 2>/dev/null || echo 0)
         graders=$(echo "$score_json" | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin)['graders']))" 2>/dev/null || echo '[]')
-        echo "{\"runtime\":\"$rt\",\"case\":\"$case\",\"arm\":\"$arm\",\"run\":$run,\"exit\":$code,\"score\":$score,\"secs\":$(( $(date +%s)-t0 )),\"graders\":$graders}" >> "$RESULTS"
+        evals/lib/metrics.py "$transcript" | python3 -c "
+import json,sys
+m=json.load(sys.stdin)
+m.update(runtime='$rt',case='$case',arm='$arm',run=$run,exit=$code,
+         score=$score,secs=$(( $(date +%s)-t0 )),graders=$graders)
+print(json.dumps(m))" >> "$RESULTS"
         echo "  $case [$arm] r$run → score=$score exit=$code"
         rm -rf "$scratch" "$home"
       done

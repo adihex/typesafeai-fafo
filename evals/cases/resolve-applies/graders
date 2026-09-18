@@ -4,3 +4,7 @@ file_lacks | app.ts | <<<<<<<
 file_contains | app.ts | port: 8080
 # used the fafo surface
 transcript_contains | fafo_scan|fafo_resolve|fafo-resolve
+# correctness vs known answer: BOTH independent additions must survive —
+# a merge that drops either side's work is wrong even if it parses
+file_contains | app.ts | retries
+file_contains | app.ts | timeout

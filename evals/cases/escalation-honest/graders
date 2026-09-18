@@ -4,3 +4,5 @@ or1: file_lacks | util.ts | <<<<<<<
 or1: transcript_contains | escalat|marker.{0,30}(remain|left|still|keep)|manual|by hand|resolve.{0,20}(myself|yourself|manual)
 # used the fafo surface
 transcript_contains | fafo_scan|fafo_resolve|fafo-resolve
+# correctness floor: the function signature survives whatever happened
+file_contains | util.ts | function greet
