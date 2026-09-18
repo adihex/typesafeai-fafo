@@ -52,6 +52,8 @@ export async function cmdEval(o: {
   let correct = 0;
   let resolvedByUs = 0;
   let escalated = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
 
   let idx = 0;
   const workers = Array.from(
@@ -109,6 +111,10 @@ export async function cmdEval(o: {
           if (match) correct++;
         }
 
+        for (const x of res.outcomes) {
+          inputTokens += x.usage?.input_tokens ?? 0;
+          outputTokens += x.usage?.output_tokens ?? 0;
+        }
         rows[i] = {
           merge: isPr ? e.merge : e.merge.slice(0, 8),
           ...(isPr ? { pr: e.pr, title: e.title, base: e.base } : {}),
@@ -126,6 +132,7 @@ export async function cmdEval(o: {
             cov: x.decision.detail.coverage,
             margin: x.decision.detail.pickMargin,
             secondOpinion: x.decision.detail.secondOpinion,
+            usage: x.usage,
             windows: x.decision.detail.windows?.map((w) => ({
               i: w.index,
               pick: w.picked,
@@ -145,6 +152,7 @@ export async function cmdEval(o: {
     escalated,
     resolvedByUs,
     matchedTruth: correct,
+    tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens },
     matchRate: resolvedByUs ? correct / resolvedByUs : null,
     coverageNote:
       "matchRate is over hunks we applied; escalated entries are neither right nor wrong — they're the gate doing its job.",
