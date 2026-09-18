@@ -1,0 +1,6 @@
+# conflict markers are gone
+file_lacks | app.ts | <<<<<<<
+# file still coherent — original content survived
+file_contains | app.ts | port: 8080
+# used the fafo surface
+transcript_contains | fafo

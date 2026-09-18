@@ -1,0 +1,5 @@
+# the seam that matters most: did the skill/MCP surface fire on natural
+# phrasing with zero tool names in the prompt?
+transcript_contains | fafo
+# and it actually finished the job
+file_lacks | app.ts | <<<<<<<

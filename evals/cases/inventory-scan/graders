@@ -1,0 +1,6 @@
+# named the conflicted file
+transcript_contains | app\.ts
+# conveyed it was a conflict/hunk situation
+transcript_contains | conflict|hunk|marker
+# used the fafo surface (skill or MCP) — the WITH-arm discriminator
+transcript_contains | fafo
