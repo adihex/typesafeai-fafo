@@ -642,7 +642,53 @@ tail
     expect(res.text).toContain("shared();");
     expect(res.text).toContain("callOurs();");
     expect(res.text).toContain("callTheirs();");
-    expect(res.text).not.toContain("extra();");
+    expect(res.text).not.toContain("extra()");
     expect(hasConflictMarkers(res.text)).toBe(false);
+  });
+
+  it("weaves kept lines in base order for diff3 hunks", async () => {
+    // theirs replaced base line 0, ours replaced base line 1 — a keep-all
+    // composition must emit theirsEdit before oursEdit, which block order
+    // (all ours then all theirs) could never express.
+    const WEAVE = `head
+<<<<<<< ours
+b0
+oursEdit
+||||||| base
+b0
+b1
+=======
+theirsEdit
+b1
+>>>>>>> theirs
+tail
+`;
+    const ask: Asker = async (req) => {
+      const q = req.questions as Record<string, unknown>;
+      if (q["keep_0"]) {
+        const answers = Object.fromEntries(
+          [0, 1, 2, 3].map((i) => [`keep_${i}`, { type: "noul", noul: 0.9 }]),
+        );
+        return {
+          model: "jev-test",
+          answers: answers as never,
+          usage: { input_tokens: 1, output_tokens: 1 },
+        };
+      }
+      if (q["verify_spliced"]) {
+        return {
+          model: "jev-test",
+          answers: { verify_spliced: { type: "noul", noul: 0.8 } } as never,
+          usage: { input_tokens: 1, output_tokens: 1 },
+        };
+      }
+      return pickResult("ours", { [COVERED]: { type: "noul", noul: 0.1 } });
+    };
+    const res = await resolveText(WEAVE, ask, {
+      decompose: false,
+      secondOpinion: false,
+    });
+    expect(res.applied).toBe(1);
+    expect(res.text).toBe("head\nb0\ntheirsEdit\noursEdit\nb1\ntail\n");
   });
 });

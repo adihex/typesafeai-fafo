@@ -69,6 +69,32 @@ export function lcsPairs(a: string[], b: string[]): Array<[number, number]> {
   return pairs;
 }
 
+/**
+ * Base position each side-line replaces, as the midpoint between its
+ * flanking base→side LCS matches. Used to order keep/drop composition:
+ * sorting both sides' lines by these anchors expresses theirs-before-ours
+ * interleaves that plain ours-then-theirs block order cannot.
+ */
+export function baseAnchors(base: string[], side: string[]): number[] {
+  const pairs = lcsPairs(base, side);
+  const at = new Map(pairs.map(([b, s]) => [s, b]));
+  const anchors: number[] = [];
+  let pi = 0;
+  let prev = -1;
+  for (let j = 0; j < side.length; j++) {
+    const m = at.get(j);
+    if (m !== undefined) {
+      anchors.push(m);
+      prev = m;
+      pi++;
+      continue;
+    }
+    const next = pi < pairs.length ? pairs[pi][0] : base.length;
+    anchors.push((prev + next) / 2);
+  }
+  return anchors;
+}
+
 /** bi of the last pair whose side-index is < pos, else -1. */
 function prevBoundary(pairs: Array<[number, number]>, pos: number): number {
   let lo = 0;

@@ -2,7 +2,12 @@ import {
   enumerateCandidates,
   repairTrailingCommas,
 } from "./candidates.ts";
-import { decomposeHunk, type Element } from "./decompose.ts";
+import {
+  baseAnchors,
+  decomposeHunk,
+  type Element,
+  type Window,
+} from "./decompose.ts";
 import { interpret } from "./interpret.ts";
 import { parseConflicts } from "./parse.ts";
 import { buildDiscardCheckRequest, buildHunkRequest, buildPerLineRequest, buildSpliceVerifyRequest, DISCARD_CHECK, DISCARDING, NOVEL, VERIFY_SPLICED } from "./questions.ts";
@@ -30,6 +35,27 @@ const SITUATION_SUFFIX =
   " The marked region is one window of a larger conflict — neighboring" +
   " windows are decided separately, so resolve THIS region only. Lines" +
   " outside the markers are context shared by both versions.";
+
+/**
+ * Permutation of keep/drop items into emission order: each item's key is
+ * the base position its line replaces (see baseAnchors), so kept lines
+ * interleave the way the merge actually reads instead of all-ours-then-
+ * all-theirs. Without base the caller falls back to block order.
+ */
+function weaveOrder(
+  items: Array<{ side: "ours" | "theirs"; idx: number }>,
+  w: Window,
+): number[] {
+  const oA = baseAnchors(w.base!, w.ours);
+  const tA = baseAnchors(w.base!, w.theirs);
+  return items
+    .map((it, i) => ({
+      i,
+      key: it.side === "ours" ? oA[it.idx] : tA[it.idx],
+    }))
+    .sort((a, b) => a.key - b.key || a.i - b.i)
+    .map((x) => x.i);
+}
 
 interface WindowAskResult {
   decision: Decision;
@@ -203,12 +229,19 @@ async function resolveHunkDecomposed(
       opts.perLine !== false
     ) {
       const seen = new Set(e.ours.map((l) => l.replace(/\s+$/, "")));
-      const askLines = [
-        ...e.ours.map((l) => ({ line: l, side: "ours" as const })),
+      const askItems = [
+        ...e.ours.map((l, idx) => ({ line: l, side: "ours" as const, idx })),
         ...e.theirs
-          .filter((l) => !seen.has(l.replace(/\s+$/, "")))
-          .map((l) => ({ line: l, side: "theirs" as const })),
+          .map((l, idx) => ({ line: l, side: "theirs" as const, idx }))
+          .filter((x) => !seen.has(x.line.replace(/\s+$/, ""))),
       ];
+      const askLines = askItems.map(({ line, side }) => ({ line, side }));
+      // Emit kept lines in base order, not block order — the anchor each
+      // line replaces is where it belongs in the merge, which expresses
+      // theirs-before-ours interleaves flat candidates cannot.
+      const order = e.base
+        ? weaveOrder(askItems, e)
+        : askLines.map((_, i) => i);
       if (askLines.length > 0) {
         const r3 = await ask(
           buildPerLineRequest(
@@ -224,9 +257,9 @@ async function resolveHunkDecomposed(
           const a = r3.answers[`keep_${i}`];
           return a?.type === "noul" ? (a as { noul: number }).noul : undefined;
         });
-        const kept = askLines
-          .filter((_, i) => nouls[i] !== undefined && nouls[i]! >= 0.5)
-          .map((x) => x.line);
+        const kept = order
+          .filter((i) => nouls[i] !== undefined && nouls[i]! >= 0.5)
+          .map((i) => askLines[i].line);
         // A composition built of confident line decisions is a real answer;
         // one built of ~0.5 coin-flips is noise — gate on decisiveness.
         const margins = nouls
@@ -500,14 +533,17 @@ export async function resolveText(
           }
           const idxs: number[] = [];
           const seen = new Set(e.ours);
-          for (const l of e.ours) {
+          const local = [
+            ...e.ours.map((line, idx) => ({ line, side: "ours" as const, idx })),
+            ...e.theirs
+              .map((line, idx) => ({ line, side: "theirs" as const, idx }))
+              .filter((x) => !seen.has(x.line)),
+          ];
+          // Emit in base order so theirs-before-ours interleaves are
+          // expressible — see weaveOrder.
+          for (const i of e.base ? weaveOrder(local, e) : local.keys()) {
             idxs.push(asked.length);
-            asked.push({ line: l, side: "ours" });
-          }
-          for (const l of e.theirs) {
-            if (seen.has(l)) continue;
-            idxs.push(asked.length);
-            asked.push({ line: l, side: "theirs" });
+            asked.push({ line: local[i].line, side: local[i].side });
           }
           slots.push(idxs);
         }
