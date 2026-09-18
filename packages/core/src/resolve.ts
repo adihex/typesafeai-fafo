@@ -519,8 +519,7 @@ export async function resolveText(
       // subset is verified like a splice.
       if (
         decision.action === "escalate" &&
-        (decision.reason === "not-in-candidates" ||
-          decision.reason === "novel-merge-needed") &&
+        decision.reason !== "ask-failed" &&
         opts.perLine !== false
       ) {
         const { elements } = decomposeHunk(hunk, 1);
