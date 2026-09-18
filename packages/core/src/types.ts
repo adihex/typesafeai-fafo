@@ -85,6 +85,8 @@ export interface Decision {
   detail: {
     picked?: string;
     confidence?: number;
+    /** Top-2 pick probability gap — near-zero means the pick is a coin-flip. */
+    pickMargin?: number;
     coverage?: number;
     verify: Record<string, number>;
     probabilities?: Record<string, number>;
@@ -130,6 +132,8 @@ export interface ResolveOptions extends HunkContext {
   decompose?: boolean;
   /** Re-sample an escalated hunk once; apply on consistent re-pick. Default true. */
   secondOpinion?: boolean;
+  /** Top-2 pick probability gap below which the pick counts as a hedge. Default 0.1. */
+  minPickMargin?: number;
   /** Max windows a hunk may split into before giving up. Default 12. */
   maxWindows?: number;
 }
