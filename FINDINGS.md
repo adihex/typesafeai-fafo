@@ -40,10 +40,28 @@ the MCP is reachable (grok proves it) but unevenly discovered.
 | cmd | auth gap — `cmd login` required |
 | kilo | auth gap — "sign in to use this model" |
 | kiro-cli | auth gap — Keychain/browser OAuth in fake HOME |
-| omp | quota gap — HTTP 429 |
+| omp | recovered from 429; runs clean — but Δ=0, see below |
 | crush | config gap — "No providers configured" |
 | cursor-agent | missing binary — uninstalled since recon |
 | claude | seeded adapter, untested this lane |
+
+## omp: Δ=0 because omp ships its own conflict surface
+
+Adapter fixed (`~/.omp/agent/skills/fafo-resolve` — verified path — and
+`--mode json` gives pi-family transcripts). All 8 rows exit-0, scores
+0.67–0.80, but Δ=0 with zero skill/MCP on every run. The transcripts
+explain why: omp resolves conflicts through **native tool primitives** —
+
+- `read 'app.ts:conflicts'` — parses marker regions
+- `write 'conflict://1' content='@both'` — a protocol URL write that
+  applies a resolution directive
+
+omp never reaches for a skill because its toolset already has a conflict
+resolver. fafo competes with a built-in here; the skill's value would
+need to be Jev's verification/escalation, which nothing in the prompt
+makes omp reach for. Transcript carries no system-prompt echo, so
+"skill offered but not chosen" vs "not offered" is indistinguishable —
+either way the observable behavior is identical: fafo adds nothing.
 
 ## Transcript shapes → metrics.py coverage
 
@@ -54,6 +72,7 @@ the MCP is reachable (grok proves it) but unevenly discovered.
 | droid | `exec -o stream-json` tool_call/tool_result/result | yes — no token fields |
 | pi | `-p --mode json` tool_execution_end/message.usage | yes |
 | grok | `--single --output-format streaming-json` ACP | yes — no token fields |
+| omp | `--mode json` tool_execution_* (pi family) | yes |
 
 `jev_*` columns stay 0 off-devin: this branch's `mcp-tools.ts` predates the
 `usage` emission (exists on integration/v1; packages/ untouched per dispatch).
