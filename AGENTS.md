@@ -35,5 +35,13 @@ Later: register as mergetool —
 - **Composition misfires**: per-line splices can apply confidently wrong
   when the union lacks the needed lines — splice-verify does not
   discriminate for composed candidates. Mitigations in place: decisiveness
-  gate (mean |keep-0.5| >= 0.2), novel-subset filter, drop audit over the
-  lines a composition omits.
+  gate (mean |keep-0.5| >= 0.2), novel-subset filter (a composition that
+  re-derives an already-rejected flat candidate is never applied), and
+  base-ordered emission for diff3 hunks. A drop audit over omitted lines
+  was measured and discarded — it added an ask per composition with no
+  gain over the decisiveness gate.
+- **Honest-ambiguity floor**: low-confidence and verification-failed
+  escalations are not miscalibration — pick confidence and margin show
+  identical distributions on vetoed-right vs vetoed-wrong hunks, so no
+  threshold reform separates them. Composition (not re-thresholding) is
+  the only lever that has moved this pool, and only weakly.
