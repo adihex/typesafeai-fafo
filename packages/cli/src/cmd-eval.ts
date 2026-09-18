@@ -1,8 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
-import { resolveText, type Asker, type ResolveOptions } from "@fafo/core";
+import {
+  resolveText,
+  type Asker,
+  type EscalationReason,
+  type ResolveOptions,
+} from "@fafo/core";
 import type { DigEntry } from "./cmd-dig.ts";
+import { bold, dim, fmtDuration, green, progress, red, yellow } from "./ui.ts";
 
 interface IntentInfo {
   msg: string;
@@ -34,6 +40,7 @@ export async function cmdEval(o: {
   corpus: string;
   cwd: string;
   json?: boolean;
+  quiet?: boolean;
   concurrency?: number;
 } & ResolveOptions): Promise<number> {
   const entries = readFileSync(o.corpus, "utf8")
@@ -52,6 +59,13 @@ export async function cmdEval(o: {
   let correct = 0;
   let resolvedByUs = 0;
   let escalated = 0;
+  let done = 0;
+  const reasonCounts = new Map<EscalationReason, number>();
+  const candidateCounts = new Map<string, number>();
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let parseErrors = 0;
+  const startedAt = Date.now();
 
   let idx = 0;
   const workers = Array.from(
@@ -61,6 +75,7 @@ export async function cmdEval(o: {
         const i = idx++;
         const e = entries[i];
         const intent = intents[e.merge];
+        const isPr = e.pr !== undefined;
         let oursIntent: string | undefined = e.oursLabel;
         let theirsIntent: string | undefined = e.theirsLabel;
         if (intent) {
@@ -76,16 +91,47 @@ export async function cmdEval(o: {
           ].filter(Boolean).join("; ");
           oursIntent = `${frame}. ours-side (${dir?.[2] ?? "ours"}) change: ${intent.ours}`;
           theirsIntent = `${frame}. theirs-side (${dir?.[1] ?? "theirs"}) change: ${intent.theirs}`;
+        } else if (isPr && e.title) {
+          // Open PR: direction is unambiguous — PR head (theirs) → base (ours).
+          const frame = `Merge: PR #${e.pr} "${e.title}" → '${e.base}' (ours, destination branch)`;
+          oursIntent = `${frame}. ours-side ('${e.base}') is the destination branch state`;
+          theirsIntent = `${frame}. theirs-side ('pr${e.pr}') change: ${e.title}`;
         }
-        const res = await resolveText(e.conflicted, ask, {
-          ...o,
-          filePath: e.path,
-          oursIntent,
-          theirsIntent,
-        });
-
+        let res: Awaited<ReturnType<typeof resolveText>> | null = null;
         let verdict: string;
-        if (e.resolved === null) {
+        try {
+          res = await resolveText(e.conflicted, ask, {
+            ...o,
+            filePath: e.path,
+            oursIntent,
+            theirsIntent,
+          });
+        } catch {
+          res = null;
+        }
+        if (res === null) {
+          verdict = "parse-error";
+          parseErrors++;
+          rows[i] = {
+            merge: e.merge.slice(0, 8),
+            path: e.path,
+            applied: 0,
+            escalated: 0,
+            verdict,
+            hunks: [],
+          };
+          done++;
+          if (!o.json && !o.quiet) {
+            console.error(`${progress(done, entries.length, startedAt)} ${e.merge.slice(0, 8)} ${e.path}: ${red(verdict)}`);
+          }
+          continue;
+        }
+        if (isPr && e.resolved === null) {
+          // Open PR: no recorded human resolution — verdict is apply vs escalate.
+          verdict = res.escalated > 0 ? "escalated" : "applied";
+          if (res.escalated > 0) escalated++;
+          else resolvedByUs++;
+        } else if (e.resolved === null) {
           verdict = res.escalated > 0 ? "escalated (file deleted in truth)" : "applied (truth: deleted)";
           if (res.escalated > 0) escalated++;
         } else if (res.escalated > 0) {
@@ -98,12 +144,28 @@ export async function cmdEval(o: {
           if (match) correct++;
         }
 
+        for (const x of res.outcomes) {
+          if (x.decision.action === "escalate" && x.decision.reason) {
+            reasonCounts.set(x.decision.reason, (reasonCounts.get(x.decision.reason) ?? 0) + 1);
+          } else if (x.decision.action === "apply" && x.decision.candidate) {
+            candidateCounts.set(
+              x.decision.candidate.kind,
+              (candidateCounts.get(x.decision.candidate.kind) ?? 0) + 1,
+            );
+          }
+          inputTokens += x.usage?.input_tokens ?? 0;
+          outputTokens += x.usage?.output_tokens ?? 0;
+        }
+
         rows[i] = {
-          merge: e.merge.slice(0, 8),
+          merge: isPr ? e.merge : e.merge.slice(0, 8),
+          ...(isPr ? { pr: e.pr, title: e.title, base: e.base } : {}),
           path: e.path,
           applied: res.applied,
           escalated: res.escalated,
           verdict,
+          resolvedTruth: e.resolved,
+          resolvedOurs: res.applied > 0 ? res.text : null,
           hunks: res.outcomes.map((x) => ({
             action: x.decision.action,
             candidate: x.decision.candidate?.kind,
@@ -112,22 +174,38 @@ export async function cmdEval(o: {
             verify: x.decision.detail.verify,
             discard: x.decision.detail.discard,
             reason: x.decision.reason,
+            wholeHunkReason: x.decision.detail.wholeHunkReason,
             error: x.decision.detail.error,
             conf: x.decision.detail.confidence,
             cov: x.decision.detail.coverage,
             secondOpinion: x.decision.detail.secondOpinion,
             headToHead: x.decision.detail.headToHead,
             perLine: x.decision.detail.perLine,
+            ours: x.hunk.ours,
+            theirs: x.hunk.theirs,
+            base: x.hunk.base,
+            resolution:
+              x.decision.action === "apply" ? x.decision.candidate!.lines : null,
+            usage: x.usage,
             windows: x.decision.detail.windows?.map((w) => ({
               i: w.index,
               pick: w.picked,
               act: w.action,
               rsn: w.reason,
+              conf: w.confidence,
+              cov: w.coverage,
               pl: w.perLine,
             })),
           })),
         };
-        if (!o.json) console.error(`${e.merge.slice(0, 8)} ${e.path}: ${verdict}`);
+        done++;
+        if (!o.json && !o.quiet) {
+          const tag =
+            verdict === "match" ? green(verdict) : verdict === "DIFFERS" ? red(verdict) : yellow(verdict);
+          console.error(`${progress(done, entries.length, startedAt)} ${e.merge.slice(0, 8)} ${e.path}: ${tag}`);
+        } else if (!o.json && done % 25 === 0) {
+          console.error(progress(done, entries.length, startedAt));
+        }
       }
     },
   );
@@ -136,13 +214,37 @@ export async function cmdEval(o: {
   const summary = {
     entries: entries.length,
     escalated,
+    parseErrors,
     resolvedByUs,
     matchedTruth: correct,
+    tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens },
     matchRate: resolvedByUs ? correct / resolvedByUs : null,
     coverageNote:
       "matchRate is over hunks we applied; escalated entries are neither right nor wrong — they're the gate doing its job.",
   };
-  if (o.json) console.log(JSON.stringify({ summary, rows }, null, 2));
-  else console.error(`\nsummary: ${JSON.stringify(summary)}`);
+  if (o.json) {
+    console.log(JSON.stringify({ summary, rows }, null, 2));
+  } else {
+    const pct = (n: number, d: number) => (d ? `${((n / d) * 100).toFixed(1)}%` : "—");
+    console.error(`\n${bold("eval summary")} ${dim(`(${entries.length} entries · ${fmtDuration(Date.now() - startedAt)})`)}`);
+    console.error(`  ${green("matched truth")}   ${correct}`);
+    console.error(`  ${yellow("differs")}         ${resolvedByUs - correct} applied but ≠ truth`);
+    console.error(`  ${dim("escalated")}       ${escalated}`);
+    if (parseErrors) console.error(`  ${red("parse errors")}   ${parseErrors} (markers unparseable — counted neither way)`);
+    console.error(
+      `  ${bold("precision")}       ${pct(correct, resolvedByUs)} of applied  ·  ${bold("coverage")} ${pct(resolvedByUs, entries.length)} of entries`,
+    );
+    if (candidateCounts.size) {
+      const mix = [...candidateCounts.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k}:${n}`).join(" ");
+      console.error(`  ${dim("applied picks")}   ${mix}`);
+    }
+    if (reasonCounts.size) {
+      const mix = [...reasonCounts.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k}:${n}`).join(" ");
+      console.error(`  ${dim("escalations")}    ${mix}`);
+    }
+    if (inputTokens + outputTokens > 0) {
+      console.error(`  ${dim("tokens")}          ${(inputTokens + outputTokens).toLocaleString()} (${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out)`);
+    }
+  }
   return 0;
 }

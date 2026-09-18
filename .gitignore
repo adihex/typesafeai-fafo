@@ -4,3 +4,4 @@ node_modules/
 .auto/
 dist/
 *.tsbuildinfo
+evals/results/

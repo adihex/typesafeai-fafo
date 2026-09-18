@@ -1,0 +1,12 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build fafo-vscode",
+      "type": "shell",
+      "command": "pnpm --filter ./packages/vscode build",
+      "problemMatcher": [],
+      "group": "build"
+    }
+  ]
+}

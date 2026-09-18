@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "fafo": {
+      "command": "npx",
+      "args": ["tsx", "${CLAUDE_PLUGIN_ROOT}/packages/cli/src/cli.ts", "mcp"]
+    }
+  }
+}

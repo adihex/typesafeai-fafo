@@ -1,19 +1,29 @@
 #!/usr/bin/env -S npx tsx
 import { parseArgs } from "node:util";
-import { cmdDig } from "./cmd-dig.ts";
+import { cmdDig, cmdDigPrs } from "./cmd-dig.ts";
 import { cmdEval } from "./cmd-eval.ts";
+import { cmdInstallMergetool } from "./cmd-install-mergetool.ts";
+import { cmdReport } from "./cmd-report.ts";
 import { cmdResolve } from "./cmd-resolve.ts";
+import { cmdMcp } from "./mcp.ts";
 
 const USAGE = `fafo-resolve — merge conflicts adjudicated by TypeSafe Jev
 
 usage:
-  fafo-resolve resolve [files...]   resolve conflicted files (default: git's unmerged list)
-  fafo-resolve dig <repo>           harvest conflict corpus from a repo's merge history
-  fafo-resolve eval <corpus.jsonl>  score the resolver against dug ground truth
+  fafo-resolve resolve [files...]     resolve conflicted files (default: git's unmerged list)
+  fafo-resolve install-mergetool      register fafo as git's mergetool
+  fafo-resolve dig <repo>             harvest conflict corpus from a repo's merge history
+  fafo-resolve dig <repo> --prs       harvest conflicts from every OPEN pull request (needs gh)
+  fafo-resolve eval <corpus.jsonl>    score the resolver against dug ground truth
+  fafo-resolve report <eval.json>     render eval output as a self-contained HTML report
+  fafo-resolve mcp                    serve the resolver to agents over stdio MCP
 
 resolve options:
   --check             report decisions, write nothing
   --json            machine-readable report on stdout
+  --verbose         show window traces and raw gate scores per hunk
+  --show            print the resolved lines under each applied hunk
+  --quiet           only the final summary
   --ours-intent T   what our change was trying to do (commit msg, free text)
   --theirs-intent T same for theirs
   --context N       context lines around each hunk (default 15)
@@ -22,14 +32,31 @@ resolve options:
   --min-verify F      reject winner below this verify noul (default 0.5)
   --no-verify       skip per-candidate verification nouls
   --no-decompose    skip per-window retry on escalated hunks
+  --no-second-opinion  skip re-ask on escalation
+  --no-head-to-head    skip top-2 binary re-pick
   --max-windows N   max sub-regions per hunk when decomposing (default 12)
   --model M         model override (default jev-latest)
 
 dig options:
   --out FILE        append JSONL corpus to file (default: stdout)
-  --limit N         max merge commits to scan (default 50)
+  --limit N         max merge commits (or PRs, with --prs) to scan (default 50 / 200)
+  --prs             dig open pull requests instead of merge history (needs gh)
+  --no-fetch        with --prs: skip the refs/pull/*/head fetch
 
-eval takes the same threshold flags plus --json.
+eval options: same threshold flags plus
+  --concurrency N   parallel entries (default 8)
+  --json            machine-readable rows on stdout
+
+install-mergetool options:
+  --local           write repo-local config (default: --global)
+  --diff3           also set merge.conflictStyle=diff3 (BASE section in conflicts)
+  --cmd 'CMD'       override the invoked command (must end with resolve "$MERGED")
+
+report options:
+  --out FILE        write HTML to file (default: stdout)
+
+exit codes: resolve/eval → 0 clean, 1 hunks escalated, 2 usage/error.
+colors: on TTY only; NO_COLOR disables.
 
 env: TYPESAFE_API_KEY must be set.
 `;
@@ -58,14 +85,22 @@ async function main(): Promise<number> {
       model: { type: "string" },
       out: { type: "string" },
       limit: { type: "string" },
+      prs: { type: "boolean" },
+      "no-fetch": { type: "boolean" },
       concurrency: { type: "string" },
+      verbose: { type: "boolean", short: "v" },
+      quiet: { type: "boolean", short: "q" },
+      show: { type: "boolean", short: "s" },
+      local: { type: "boolean" },
+      diff3: { type: "boolean" },
+      cmd: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
 
-  if (values.help || !cmd) {
+  if (values.help || !cmd || cmd === "help" || cmd === "--help" || cmd === "-h") {
     console.log(USAGE);
-    return cmd ? 0 : 2;
+    return values.help || cmd === "help" || cmd === "--help" || cmd === "-h" ? 0 : 2;
   }
 
   const shared = {
@@ -86,17 +121,47 @@ async function main(): Promise<number> {
 
   switch (cmd) {
     case "resolve":
-      return cmdResolve({ ...shared, files: positionals, check: values.check ?? false, cwd: process.cwd() });
+      return cmdResolve({
+        ...shared,
+        files: positionals,
+        check: values.check ?? false,
+        verbose: values.verbose ?? false,
+        quiet: values.quiet ?? false,
+        show: values.show ?? false,
+        cwd: process.cwd(),
+      });
     case "dig": {
       const repo = positionals[0];
       if (!repo) throw new Error("dig needs a repo path");
+      if (values.prs)
+        return cmdDigPrs({ repo, out: values.out, limit: num(values.limit, 200), fetch: !values["no-fetch"] });
       return cmdDig({ repo, out: values.out, limit: num(values.limit, 50) });
     }
+    case "install-mergetool":
+      return cmdInstallMergetool({
+        local: values.local ?? false,
+        diff3: values.diff3 ?? false,
+        cmd: values.cmd,
+        cwd: process.cwd(),
+      });
     case "eval": {
       const corpus = positionals[0];
       if (!corpus) throw new Error("eval needs a corpus.jsonl path");
-      return cmdEval({ ...shared, corpus, cwd: process.cwd(), concurrency: num(values.concurrency, 8) });
+      return cmdEval({
+        ...shared,
+        corpus,
+        cwd: process.cwd(),
+        quiet: values.quiet ?? false,
+        concurrency: num(values.concurrency, 8),
+      });
     }
+    case "report": {
+      const input = positionals[0];
+      if (!input) throw new Error("report needs an eval.json path");
+      return cmdReport({ input, out: values.out });
+    }
+    case "mcp":
+      return cmdMcp();
     default:
       console.error(`unknown command: ${cmd}\n`);
       console.log(USAGE);

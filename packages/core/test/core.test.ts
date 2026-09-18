@@ -87,6 +87,23 @@ describe("parseConflicts", () => {
   it("throws on unterminated conflict", () => {
     expect(() => parseConflicts("<<<<<<< a\nx\n")).toThrow(ConflictParseError);
   });
+
+  it("ignores marker-shaped content lines (setext underlines, long runs)", () => {
+    const text = `<<<<<<< ours
+Title
+=====
+theirs stuff
+=======
+Title2
+=================================
+more
+>>>>>>> theirs
+`;
+    const { hunks } = parseConflicts(text);
+    expect(hunks).toHaveLength(1);
+    expect(hunks[0].ours).toEqual(["Title", "=====", "theirs stuff"]);
+    expect(hunks[0].theirs).toEqual(["Title2", "=================================", "more"]);
+  });
 });
 
 const hunk = (o: Partial<ConflictHunk>): ConflictHunk => ({

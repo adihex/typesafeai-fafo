@@ -1,0 +1,12 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "fafo",
+  "version": "0.0.0",
+  "description": "Resolve git merge conflicts with TypeSafe Jev — a selector over enumerated candidate resolutions (ours/theirs/both/union/base/drop/spliced), not a code generator. Unsafe hunks escalate with markers intact.",
+  "author": {
+    "name": "adihex"
+  },
+  "repository": "https://github.com/adihex/typesafeai-fafo",
+  "license": "MIT",
+  "keywords": ["git", "merge-conflict", "mcp", "jev", "typesafe"]
+}
