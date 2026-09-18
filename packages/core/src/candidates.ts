@@ -24,27 +24,51 @@ function dedupeLines(first: string[], second: string[]): string[] {
 }
 
 /**
+ * Verbatim line-concat can leave a trailing comma before a closing bracket —
+ * invalid in JSON. Drop the comma when the next non-blank line closes a
+ * bracket. Gated to .json files: in JS/TS trailing commas are legal, so
+ * repairing would only diverge the text from a valid resolution.
+ */
+export function repairTrailingCommas(lines: string[]): string[] {
+  const out = [...lines];
+  for (let i = 0; i < out.length; i++) {
+    if (!out[i].trimEnd().endsWith(",")) continue;
+    const next = out.slice(i + 1).find((l) => l.trim() !== "");
+    if (next && /^[}\])]/.test(next.trim())) {
+      out[i] = out[i].replace(/,(\s*)$/, "$1");
+    }
+  }
+  return out;
+}
+
+/**
  * The enumerable resolution space for one hunk. Candidates that produce
  * identical replacement text are dropped — same output, same resolution.
  */
-export function enumerateCandidates(hunk: ConflictHunk): Candidate[] {
+export function enumerateCandidates(
+  hunk: ConflictHunk,
+  filePath?: string,
+): Candidate[] {
+  const repair = filePath?.endsWith(".json")
+    ? repairTrailingCommas
+    : (lines: string[]) => lines;
   const all: Candidate[] = [
     { kind: "ours", description: DESCRIPTIONS.ours, lines: hunk.ours },
     { kind: "theirs", description: DESCRIPTIONS.theirs, lines: hunk.theirs },
     {
       kind: "both-ours-theirs",
       description: DESCRIPTIONS["both-ours-theirs"],
-      lines: [...hunk.ours, ...hunk.theirs],
+      lines: repair([...hunk.ours, ...hunk.theirs]),
     },
     {
       kind: "both-theirs-ours",
       description: DESCRIPTIONS["both-theirs-ours"],
-      lines: [...hunk.theirs, ...hunk.ours],
+      lines: repair([...hunk.theirs, ...hunk.ours]),
     },
     {
       kind: "union",
       description: DESCRIPTIONS.union,
-      lines: dedupeLines(hunk.ours, hunk.theirs),
+      lines: repair(dedupeLines(hunk.ours, hunk.theirs)),
     },
   ];
   if (hunk.base !== null) {

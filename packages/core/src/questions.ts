@@ -12,6 +12,15 @@ export const COVERED = "covered";
 export const NOVEL = "needs-novel-merge";
 export const VERIFY_SPLICED = "verify_spliced";
 export const verifyKey = (kind: string) => `verify_${kind}`;
+export const discardKey = (kind: string) => `discard_${kind}`;
+
+/** Candidates whose apply discards work from a side — the dangerous direction. */
+export const DISCARDING: ReadonlySet<string> = new Set([
+  "ours",
+  "theirs",
+  "base",
+  "drop",
+]);
 
 const NOVEL_DESCRIPTION =
   "None of the candidates is correct — resolving this conflict requires new or reworked code not present in either version.";
@@ -110,6 +119,61 @@ export function buildHunkRequest(
     }
   }
 
+  const request: SystemOneRequest<Questions> = {
+    state: buildState(parsed, hunk, ctx),
+    questions,
+  };
+  if (opts.model) request.model = opts.model;
+  return request;
+}
+
+export const DISCARD_CHECK = "discard_check";
+
+/**
+ * Focused discard audit: show Jev the actual lines a pick drops and ask
+ * whether losing them is safe. Judging dropped lines directly is a sharper
+ * elicitation than judging the kept candidate — losses are visible.
+ */
+export function buildDiscardCheckRequest(
+  parsed: ParsedConflicts,
+  hunk: ConflictHunk,
+  droppedLines: string[],
+  pickedKind: string,
+  ctx: HunkContext,
+  opts: { model?: string } = {},
+): SystemOneRequest<Questions> {
+  const request: SystemOneRequest<Questions> = {
+    state: buildState(parsed, hunk, ctx),
+    questions: {
+      [DISCARD_CHECK]: noul({
+        instruction: `The resolution picked "${pickedKind}", which discards the lines below from the other side. Is losing them safe — are they genuinely moot, duplicated, or already subsumed by what is kept, meaning no real functionality, fields, dependencies, handling, or tests are lost?`,
+        dropped_lines: block("lines dropped by the pick", truncateLines(droppedLines, 60)),
+      }),
+    },
+  };
+  if (opts.model) request.model = opts.model;
+  return request;
+}
+
+/**
+ * Last-resort composition ask: one keep/drop noul per non-shared union
+ * line. Shared (anchor) lines are not asked — they are in both versions.
+ * Lets Jev compose subsets no enumerated candidate can express.
+ */
+export function buildPerLineRequest(
+  parsed: ParsedConflicts,
+  hunk: ConflictHunk,
+  lines: Array<{ line: string; side: "ours" | "theirs" }>,
+  ctx: HunkContext,
+  opts: { model?: string } = {},
+): SystemOneRequest<Questions> {
+  const questions: Questions = {};
+  lines.forEach((l, i) => {
+    questions[`keep_${i}`] = noul({
+      instruction: `Should this exact line from ${l.side.toUpperCase()} appear in the correct resolution of the conflict? Yes if the resolved file should contain it, no if the resolution drops it.`,
+      line: l.line,
+    });
+  });
   const request: SystemOneRequest<Questions> = {
     state: buildState(parsed, hunk, ctx),
     questions,

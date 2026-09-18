@@ -61,7 +61,9 @@ export type EscalationReason =
   | "not-in-candidates"
   | "novel-merge-needed"
   | "verification-failed"
+  | "discards-work"
   | "low-confidence"
+  | "invalid-composition"
   | "ask-failed";
 
 /** Per-window trace left by a decomposed (spliced) decision. */
@@ -74,6 +76,8 @@ export interface WindowTrace {
   coverage?: number;
   action: "apply" | "escalate";
   reason?: EscalationReason;
+  /** Window winner came from per-line keep/drop over the window union. */
+  perLine?: boolean;
 }
 
 export interface Decision {
@@ -89,6 +93,8 @@ export interface Decision {
     pickMargin?: number;
     coverage?: number;
     verify: Record<string, number>;
+    /** Per-candidate "is the drop safe" nouls for discarding kinds. */
+    discard?: Record<string, number>;
     probabilities?: Record<string, number>;
     /** Error message when the ask itself failed. */
     error?: string;
@@ -100,6 +106,8 @@ export interface Decision {
     secondOpinion?: boolean;
     /** Apply came from a head-to-head between the top-2 probable candidates. */
     headToHead?: boolean;
+    /** Apply came from per-line keep/drop composition over the union. */
+    perLine?: boolean;
   };
 }
 
@@ -138,6 +146,8 @@ export interface ResolveOptions extends HunkContext {
   minPickMargin?: number;
   /** After retries fail, ask a binary pick between the top-2 candidates. Default true. */
   headToHead?: boolean;
+  /** Last resort on expressiveness failures: per-line keep/drop over the union. Default true. */
+  perLine?: boolean;
   /** Max windows a hunk may split into before giving up. Default 12. */
   maxWindows?: number;
   /** Escalate on ANY single sub-threshold signal instead of requiring two. Default false. */

@@ -149,6 +149,26 @@ describe("enumerateCandidates", () => {
     // base ["a"] duplicates ours ["a"] — base should be gone
     expect(cs.map((c) => c.kind)).not.toContain("base");
   });
+
+  it("repairs trailing commas in composed candidates for .json files", () => {
+    const cs = enumerateCandidates(
+      hunk({ ours: ['"a": 1,', "}"], theirs: ['"b": 2,', "}"] }),
+      "f.json",
+    );
+    const union = cs.find((c) => c.kind === "union")!;
+    expect(union.lines).toEqual(['"a": 1', "}", '"b": 2,']);
+    const both = cs.find((c) => c.kind === "both-ours-theirs")!;
+    expect(both.lines).toEqual(['"a": 1', "}", '"b": 2', "}"]);
+  });
+
+  it("leaves trailing commas verbatim for non-json files", () => {
+    const cs = enumerateCandidates(
+      hunk({ ours: ['"a": 1,', "}"], theirs: ['"b": 2,', "}"] }),
+      "f.ts",
+    );
+    const union = cs.find((c) => c.kind === "union")!;
+    expect(union.lines).toEqual(['"a": 1,', "}", '"b": 2,']);
+  });
 });
 
 const candidates: Candidate[] = [
@@ -262,6 +282,163 @@ describe("resolveText", () => {
     expect(res.outcomes).toHaveLength(2);
     expect(res.text).toBe("a\no1\nmid\no2\nz\n");
   });
+
+  it("repairs a boundary trailing comma instead of vetoing", async () => {
+    const JSON_CONFLICT = `{
+  "name": "x",
+<<<<<<< HEAD
+  "a": 1,
+=======
+  "b": 2
+>>>>>>> b
+}
+`;
+    // "ours" leaves a trailing comma before "}" — strict JSON can't contain
+    // it, so file-level repair drops the comma and the apply stands.
+    const res = await resolveText(JSON_CONFLICT, asker(result()), {
+      filePath: "f.json",
+    });
+    expect(res.applied).toBe(1);
+    expect(JSON.parse(res.text)).toEqual({ name: "x", a: 1 });
+    expect(hasConflictMarkers(res.text)).toBe(false);
+  });
+
+  it("vetoes every apply when the composed .json file still doesn't parse", async () => {
+    const JSON_CONFLICT = `{
+  "name": "x",
+<<<<<<< HEAD
+  "a":
+=======
+  "b": 2
+>>>>>>> b
+}
+`;
+    // "ours" is truncated — no comma repair can save it, so every apply is
+    // vetoed and the markers stay.
+    const res = await resolveText(JSON_CONFLICT, asker(result()), {
+      filePath: "f.json",
+    });
+    expect(res.applied).toBe(0);
+    expect(res.outcomes[0].decision.reason).toBe("invalid-composition");
+    expect(hasConflictMarkers(res.text)).toBe(true);
+  });
+
+  it("skips repair and veto when the .json file is actually JSONC", async () => {
+    const JSON_CONFLICT = `{
+  // trailing commas are fine here
+<<<<<<< HEAD
+  "a": 1,
+=======
+  "b": 2
+>>>>>>> b
+}
+`;
+    const res = await resolveText(JSON_CONFLICT, asker(result()), {
+      filePath: "f.json",
+    });
+    expect(res.applied).toBe(1);
+    expect(res.text).toContain('"a": 1,');
+    expect(hasConflictMarkers(res.text)).toBe(false);
+  });
+
+  it("keeps applies when the composed .json file parses", async () => {
+    const JSON_CONFLICT = `{
+  "name": "x",
+<<<<<<< HEAD
+  "a": 1
+=======
+  "b": 2
+>>>>>>> b
+}
+`;
+    const res = await resolveText(JSON_CONFLICT, asker(result()), {
+      filePath: "f.json",
+    });
+    expect(res.applied).toBe(1);
+    expect(hasConflictMarkers(res.text)).toBe(false);
+  });
+
+  it("keeps applies when a duplicated block exists in both hunks' sources", async () => {
+    // The block is verbatim in each hunk's ours side — the conflicted file
+    // already carried it twice, so emitting it twice is carried-through,
+    // not a synthesized contradiction.
+    const block = [
+      "alpha_field_one",
+      "alpha_field_two",
+      "alpha_field_three",
+      "alpha_field_four",
+      "alpha_field_five",
+    ].join("\n");
+    const DUP = `a
+<<<<<<< HEAD
+${block}
+=======
+t1
+>>>>>>> b
+mid
+<<<<<<< HEAD
+${block}
+=======
+t2
+>>>>>>> b
+z
+`;
+    const res = await resolveText(DUP, asker(result()));
+    expect(res.applied).toBe(2);
+    expect(hasConflictMarkers(res.text)).toBe(false);
+  });
+
+  it("vetoes a hunk that synthesizes a block another hunk emitted", async () => {
+    // hunk0's union spans a side boundary, producing a 5-line window that
+    // exists in NEITHER side's lines — a synthesized duplicate of the block
+    // hunk1 carries verbatim from its source.
+    const DUP = `a
+<<<<<<< HEAD
+aaa_1
+bbb_2
+=======
+ccc_3
+ddd_4
+eee_5
+>>>>>>> b
+mid
+<<<<<<< HEAD
+aaa_1
+bbb_2
+ccc_3
+ddd_4
+eee_5
+=======
+t2
+>>>>>>> b
+z
+`;
+    let call = 0;
+    const seq: Asker = async () => {
+      call++;
+      if (call === 1) {
+        return result({
+          [PICK]: {
+            type: "choice",
+            choice: "both-ours-theirs",
+            confidence: 0.9,
+            probabilities: {
+              "both-ours-theirs": 0.9,
+              ours: 0.05,
+              theirs: 0.05,
+            },
+          },
+          [verifyKey("both-ours-theirs")]: { type: "noul", noul: 0.9 },
+        });
+      }
+      return result();
+    };
+    const res = await resolveText(DUP, seq);
+    expect(res.applied).toBe(1);
+    expect(res.outcomes[0].decision.reason).toBe("invalid-composition");
+    expect(res.outcomes[1].decision.action).toBe("apply");
+    expect(hasConflictMarkers(res.text)).toBe(true);
+  });
 });
 
 describe("decomposeHunk", () => {
@@ -369,7 +546,7 @@ tail
       }
       return pickResult("ours", { [COVERED]: { type: "noul", noul: 0.1 } });
     };
-    const res = await resolveText(INTERLEAVED, ask);
+    const res = await resolveText(INTERLEAVED, ask, { perLine: false });
     expect(res.escalated).toBe(1);
     expect(res.outcomes[0].decision.detail.wholeHunkReason).toBe("not-in-candidates");
     expect(hasConflictMarkers(res.text)).toBe(true);
@@ -381,7 +558,11 @@ tail
       calls++;
       return pickResult("ours", { [COVERED]: { type: "noul", noul: 0.1 } });
     };
-    await resolveText(INTERLEAVED, ask, { decompose: false, secondOpinion: false });
+    await resolveText(INTERLEAVED, ask, {
+      decompose: false,
+      secondOpinion: false,
+      perLine: false,
+    });
     expect(calls).toBe(1);
   });
 
@@ -409,7 +590,10 @@ tail
         ? pickResult("ours", { [COVERED]: { type: "noul", noul: 0.1 } })
         : pickResult("theirs", { [COVERED]: { type: "noul", noul: 0.95 } });
     };
-    const res = await resolveText(INTERLEAVED, ask, { decompose: false });
+    const res = await resolveText(INTERLEAVED, ask, {
+      decompose: false,
+      perLine: false,
+    });
     expect(res.escalated).toBe(1);
   });
 
@@ -442,5 +626,40 @@ tail
     expect(res.applied).toBe(1);
     expect(res.outcomes[0].decision.detail.headToHead).toBe(true);
     expect(res.outcomes[0].decision.candidate?.kind).toBe("ours");
+  });
+
+  it("composes a resolution by per-line keep/drop as a last resort", async () => {
+    const ask: Asker = async (req) => {
+      const q = req.questions as Record<string, unknown>;
+      if (q["keep_0"]) {
+        const answers: Record<string, unknown> = {};
+        // keep_0: import{a} ours, keep_1: import{a,b} theirs,
+        // keep_2: callOurs ours, keep_3: callTheirs theirs, keep_4: extra theirs
+        for (const [i, n] of [0.9, 0.1, 0.8, 0.9, 0.1].entries()) {
+          answers[`keep_${i}`] = { type: "noul", noul: n };
+        }
+        return { model: "jev-test", answers: answers as never, usage: { input_tokens: 1, output_tokens: 1 } };
+      }
+      if (q["verify_spliced"]) {
+        return {
+          model: "jev-test",
+          answers: { verify_spliced: { type: "noul", noul: 0.8 } } as never,
+          usage: { input_tokens: 1, output_tokens: 1 },
+        };
+      }
+      return pickResult("ours", { [COVERED]: { type: "noul", noul: 0.1 } });
+    };
+    const res = await resolveText(INTERLEAVED, ask, {
+      decompose: false,
+      secondOpinion: false,
+    });
+    expect(res.applied).toBe(1);
+    expect(res.outcomes[0].decision.detail.perLine).toBe(true);
+    expect(res.text).toContain('import { a } from "x";');
+    expect(res.text).toContain("shared();");
+    expect(res.text).toContain("callOurs();");
+    expect(res.text).toContain("callTheirs();");
+    expect(res.text).not.toContain("extra();");
+    expect(hasConflictMarkers(res.text)).toBe(false);
   });
 });
