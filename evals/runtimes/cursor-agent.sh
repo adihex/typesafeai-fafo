@@ -22,7 +22,7 @@ CFG
 rt_invoke() {
   (
     cd "$2" || exit 1
-    HOME="$4" TYPESAFE_API_KEY="${TYPESAFE_API_KEY:-}" cursor-agent \
+    HOME="$4" PATH="$REAL_HOME/.local/bin:$REAL_HOME/bin:$PATH" TYPESAFE_API_KEY="${TYPESAFE_API_KEY:-}" cursor-agent \
       -p --output-format text --force --approve-mcps \
       "$(cat "$1")" >"$3" 2>"$3.stderr"
   )

@@ -11,7 +11,7 @@ ARMS=${ARMS:-"with without"}
 RUNTIMES=${RUNTIMES:-devin}
 DEADLINE=${DEADLINE:-600}
 REAL_HOME="$HOME"
-OUT=evals/results/$(date -u +%Y-%m-%dT%H-%M-%S)
+OUT="$PWD/evals/results/$(date -u +%Y-%m-%dT%H-%M-%S)"  # absolute — rt_invoke cd's into the fixture
 mkdir -p "$OUT"
 CASES=("$@")
 [ ${#CASES[@]} -eq 0 ] && CASES=($(ls evals/cases))
@@ -42,14 +42,15 @@ for rt in $RUNTIMES; do
       for run in $(seq 1 "$RUNS"); do
         scratch=$(mktemp -d); transcript="$OUT/${rt}.${case}.${arm}.r${run}.json"
         evals/lib/mkfixture.sh "$fixture_kind" "$scratch" || { echo "  $case/$arm/r$run FIXTURE-FAIL"; continue; }
-        home=$(rt_fake_home "$arm") || { echo "  $case/$arm/r$run HOME-FAIL"; continue; }
+        home=$(rt_fake_home "$arm" "$scratch") || { echo "  $case/$arm/r$run HOME-FAIL"; continue; }
         t0=$(date +%s)
-        run_with_deadline rt_invoke "$dir/prompt.md" "$scratch" "$transcript" "$home"
+        run_with_deadline rt_invoke "$PWD/$dir/prompt.md" "$scratch" "$transcript" "$home"
         code=$?
         score_json=$(evals/lib/grade.py "$dir" "$scratch" "$transcript" "$code" 2>/dev/null)
         score=$(echo "$score_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['score'])" 2>/dev/null || echo 0)
         graders=$(echo "$score_json" | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin)['graders']))" 2>/dev/null || echo '[]')
-        echo "{\"runtime\":\"$rt\",\"case\":\"$case\",\"arm\":\"$arm\",\"run\":$run,\"exit\":$code,\"score\":$score,\"secs\":$(( $(date +%s)-t0 )),\"graders\":$graders}" >> "$RESULTS"
+        evals/lib/row.py "$transcript" "$rt" "$case" "$arm" "$run" "$code" \
+          "$score" "$(( $(date +%s)-t0 ))" "$graders" >> "$RESULTS"
         echo "  $case [$arm] r$run → score=$score exit=$code"
         rm -rf "$scratch" "$home"
       done

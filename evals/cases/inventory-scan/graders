@@ -3,4 +3,4 @@ transcript_contains | app\.ts
 # conveyed it was a conflict/hunk situation
 transcript_contains | conflict|hunk|marker
 # used the fafo surface (skill or MCP) — the WITH-arm discriminator
-transcript_contains | fafo
+transcript_contains | fafo_scan|fafo_resolve|fafo-resolve

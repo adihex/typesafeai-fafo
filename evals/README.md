@@ -20,10 +20,31 @@ RUNS=1 ARMS=with ./evals/run.sh resolve-applies      # cheap iteration
 ```
 
 Per run: build a scratch repo → run the agent headless in it under a
-prepared HOME → grade transcript + file state. Score = fraction of
-graders passed; case score = mean over RUNS (default 3). Report prints
-WITH / W/OUT / Δ per runtime — **Δ is the number that matters**: a case
-the baseline also passes proves the surface contributed nothing.
+prepared HOME → grade transcript + file state + extract metrics.
+Score = fraction of graders passed; case score = mean over RUNS
+(default 3). **Δ is the number that matters**: a case the baseline
+also passes proves the surface contributed nothing.
+
+## A/B metrics (report.py)
+
+Each results row carries, alongside `score`/`secs`/`exit`/`graders`:
+
+| field | source | what it answers |
+|---|---|---|
+| `agent_prompt_tokens` / `agent_completion_tokens` / `agent_cached_tokens` | transcript `final_metrics` | model cost — prompt tokens include skill+MCP schema weight, i.e. the plugin's context overhead |
+| `agent_steps` | `final_metrics.total_steps` | agent effort |
+| `tool_calls` / `tool_fns` | per-step `tool_calls` | exploration cost — does fafo replace manual git archaeology? |
+| `skill_fired` | `skill` tool_call args | surface-discovery rate |
+| `jev_input_tokens` / `jev_output_tokens` | `usage` in `fafo_resolve` results | Jev-side spend, WITH arm only |
+
+Report columns per (runtime × case × arm): `score` (all graders),
+`fileOK` (file-state graders only — correctness independent of
+surface), `surf` (fafo surface use), `secs`, `steps`, `tools`,
+`promptK`, `compl`, `jevK`, plus per-case Δscore and mean Δ.
+
+New runtimes: `metrics.py` parses the **devin** export format; other
+adapters may emit a different transcript shape — extend `metrics.py`
+or accept `{}` (columns render `—`).
 
 ## Arms = prepared HOMEs
 

@@ -12,7 +12,11 @@ rt_fake_home() {
   for d in brain cli.log implicit knowledge installation_id antigravity_state.pbtxt; do
     ln -s "$REAL_HOME/.gemini/antigravity/$d" "$h/.gemini/antigravity/" 2>/dev/null
   done
-  ln -s "$REAL_HOME/.gemini/settings.json" "$h/.gemini/" 2>/dev/null
+  ln -s "$REAL_HOME/.gemini/antigravity-cli" "$h/.gemini/" 2>/dev/null
+  ln -s "$REAL_HOME/.gemini/jetski-standalone-oauth-token" "$h/.gemini/" 2>/dev/null
+  for f in settings.json oauth_creds.json google_accounts.json projects.json state.json; do
+    ln -s "$REAL_HOME/.gemini/$f" "$h/.gemini/" 2>/dev/null
+  done
   if [ "$1" = "with" ]; then
     ln -s "$FAFO_SKILL" "$h/.gemini/antigravity/skills/fafo-resolve"
     cat > "$h/.gemini/config/mcp_config.json" <<CFG
@@ -27,8 +31,8 @@ CFG
 rt_invoke() {
   (
     cd "$2" || exit 1
-    HOME="$4" TYPESAFE_API_KEY="${TYPESAFE_API_KEY:-}" agy \
-      --print --dangerously-skip-permissions \
-      "$(cat "$1")" >"$3" 2>"$3.stderr"
+    HOME="$4" PATH="$REAL_HOME/.local/bin:$REAL_HOME/bin:$PATH" TYPESAFE_API_KEY="${TYPESAFE_API_KEY:-}" agy \
+      --dangerously-skip-permissions \
+      --print="$(cat "$1")" >"$3" 2>"$3.stderr"
   )
 }

@@ -8,6 +8,7 @@ rt_fake_home() {
   local h; h=$(mktemp -d)
   mkdir -p "$h/.copilot/skills" "$h/.config"
   ln -s "$REAL_HOME/.config/github-copilot" "$h/.config/" 2>/dev/null
+  ln -s "$REAL_HOME/.config/gh" "$h/.config/" 2>/dev/null
   for f in config.json copilot-instructions.md data.db; do
     ln -s "$REAL_HOME/.copilot/$f" "$h/.copilot/" 2>/dev/null
   done
@@ -23,7 +24,7 @@ CFG
 rt_invoke() {
   (
     cd "$2" || exit 1
-    HOME="$4" TYPESAFE_API_KEY="${TYPESAFE_API_KEY:-}" copilot \
+    HOME="$4" PATH="$REAL_HOME/.local/bin:$REAL_HOME/bin:/opt/homebrew/bin:$PATH" TYPESAFE_API_KEY="${TYPESAFE_API_KEY:-}" GH_TOKEN="${GH_TOKEN:-$(gh auth token 2>/dev/null)}" GITHUB_TOKEN="${GITHUB_TOKEN:-$(gh auth token 2>/dev/null)}" copilot \
       -p "$(cat "$1")" --allow-all-tools >"$3" 2>"$3.stderr"
   )
 }

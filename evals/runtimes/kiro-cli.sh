@@ -9,6 +9,7 @@ FAFO_SKILL="${FAFO_SKILL:-$FAFO_REPO/skills/fafo-resolve}"
 rt_fake_home() {
   local h; h=$(mktemp -d)
   mkdir -p "$h/.kiro/skills" "$h/.kiro/agents"
+  ln -s "$REAL_HOME/.aws" "$h/.aws" 2>/dev/null
   for d in settings sessions session-index argv.json; do
     ln -s "$REAL_HOME/.kiro/$d" "$h/.kiro/" 2>/dev/null
   done
@@ -26,7 +27,7 @@ rt_invoke() {
     cd "$2" || exit 1
     local agent=""
     [ -f "$4/.kiro/agents/fafo-eval.json" ] && agent="--agent fafo-eval"
-    HOME="$4" TYPESAFE_API_KEY="${TYPESAFE_API_KEY:-}" kiro-cli chat \
+    HOME="$4" PATH="$REAL_HOME/.local/bin:$REAL_HOME/bin:$PATH" TYPESAFE_API_KEY="${TYPESAFE_API_KEY:-}" kiro-cli chat \
       $agent -a \
       "$(cat "$1")" >"$3" 2>"$3.stderr"
   )
