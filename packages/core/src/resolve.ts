@@ -247,21 +247,29 @@ export async function resolveText(
       let decision = interpret(result, candidates, opts);
       let usage: HunkOutcome["usage"] = result.usage;
 
-      if (
-        decision.action === "escalate" &&
-        decision.reason !== "ask-failed" &&
-        opts.decompose !== false
-      ) {
-        const retry = await resolveHunkDecomposed(
-          parsed,
-          hunk,
-          ask,
-          opts,
-          decision.reason,
-        );
-        if (retry) {
-          decision = retry.decision;
-          usage = addUsage(usage, retry.usage);
+      if (opts.decompose !== false) {
+        const covFail =
+          decision.action === "apply" &&
+          decision.detail.coverage !== undefined &&
+          decision.detail.coverage < (opts.minCoverage ?? 0.5);
+        // Escalations retry per-window; applies with hedged coverage get
+        // refined per-window too — a spliced verdict is strictly better
+        // information than a single-side pick the model doubts covers it.
+        if (
+          (decision.action === "escalate" && decision.reason !== "ask-failed") ||
+          covFail
+        ) {
+          const retry = await resolveHunkDecomposed(
+            parsed,
+            hunk,
+            ask,
+            opts,
+            decision.action === "escalate" ? decision.reason : "not-in-candidates",
+          );
+          if (retry) {
+            decision = retry.decision;
+            usage = addUsage(usage, retry.usage);
+          }
         }
       }
 
