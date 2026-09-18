@@ -32,7 +32,9 @@ Integrations: `install-mergetool` registers fafo for `git mergetool`
 (exit 0 = file resolved, nonzero = still conflicted); `resolve --threeway`
 speaks the `$BASE $OURS $THEIRS $OUT` contract for `jj resolve` (config in
 `docs/jj.md`); lazygit block in `docs/lazygit.md`; hunk extension in
-`integrations/hunk/fafo.ts`; agent skill in `skills/fafo-resolve/`.
+`integrations/hunk/fafo.ts` (resolve + Jev-rationale comments);
+herdr worker provisioning in `integrations/herdr/`; agent skill in
+`skills/fafo-resolve/`.
 
 ## Known limits
 
