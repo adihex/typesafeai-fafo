@@ -49,6 +49,8 @@ export function interpret(
     detail.picked = pick.choice;
     detail.confidence = pick.confidence;
     detail.probabilities = { ...pick.probabilities };
+    const top2 = Object.values(detail.probabilities).sort((a, b) => b - a).slice(0, 2);
+    if (top2.length === 2) detail.pickMargin = top2[0] - top2[1];
   }
 
   const escalate = (reason: Decision["reason"]): Decision => ({ action: "escalate", reason, detail });
@@ -63,6 +65,11 @@ export function interpret(
   const conf = pick.confidence;
   const ver = verify[winner.kind];
 
+  // Pick margin: when Jev's own distribution is a near coin-flip between the
+  // top two options, the pick itself is unstable — count it like a hedge.
+  const minMargin = opts.minPickMargin ?? 0.1;
+  const margin = detail.pickMargin ?? 1;
+
   const fails: Array<{ reason: EscalationReason; value: number }> = [];
   if (cov !== undefined && cov < minCoverage) {
     fails.push({ reason: "not-in-candidates", value: cov / minCoverage });
@@ -72,6 +79,9 @@ export function interpret(
   }
   if (conf < minConfidence) {
     fails.push({ reason: "low-confidence", value: conf / minConfidence });
+  }
+  if (margin < minMargin) {
+    fails.push({ reason: "low-confidence", value: margin / minMargin });
   }
 
   const strong =

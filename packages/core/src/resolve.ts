@@ -2,7 +2,7 @@ import { enumerateCandidates } from "./candidates.ts";
 import { decomposeHunk, type Element } from "./decompose.ts";
 import { interpret } from "./interpret.ts";
 import { parseConflicts } from "./parse.ts";
-import { buildHunkRequest } from "./questions.ts";
+import { buildHunkRequest, buildSpliceVerifyRequest, VERIFY_SPLICED } from "./questions.ts";
 import type {
   Asker,
   ConflictHunk,
@@ -175,7 +175,19 @@ async function resolveHunkDecomposed(
       };
     }
     usage = addUsage(usage, result.usage);
-    const d = interpret(result, candidates, opts);
+    let d = interpret(result, candidates, opts);
+    // Second opinion at window granularity too: a consistent re-pick that
+    // clears the gates rescues a borderline window escalation.
+    if (
+      d.action === "escalate" &&
+      d.reason !== "ask-failed" &&
+      opts.secondOpinion !== false
+    ) {
+      const r2 = await ask(request);
+      usage = addUsage(usage, r2.usage);
+      const d2 = interpret(r2, candidates, opts);
+      if (d2.action === "apply" && d2.candidate?.kind === d.detail.picked) d = d2;
+    }
     windowTraces.push({
       index: wi,
       oursLines: e.ours.length,
@@ -209,6 +221,31 @@ async function resolveHunkDecomposed(
     else lines.push(...(winners.get(wi++) ?? []));
   }
 
+  // Verify the composition as a whole — window-level verifies judge parts;
+  // a splice can be locally consistent and globally wrong.
+  let spliceScore: number | undefined;
+  if (!opts.noVerify) {
+    const vr = await ask(buildSpliceVerifyRequest(parsed, hunk, lines, opts, opts));
+    usage = addUsage(usage, vr.usage);
+    const a = vr.answers[VERIFY_SPLICED];
+    spliceScore =
+      a?.type === "noul" ? (a as { noul: number }).noul : undefined;
+    if (spliceScore !== undefined && spliceScore < 0.3) {
+      return {
+        decision: {
+          action: "escalate",
+          reason: "verification-failed",
+          detail: {
+            verify: { spliced: spliceScore },
+            windows: windowTraces,
+            wholeHunkReason,
+          },
+        },
+        usage,
+      };
+    }
+  }
+
   return {
     decision: {
       action: "apply",
@@ -218,7 +255,11 @@ async function resolveHunkDecomposed(
           "Line-level merge: the conflict was split into sub-regions and each resolved separately.",
         lines,
       },
-      detail: { verify: {}, windows: windowTraces, wholeHunkReason },
+      detail: {
+        verify: spliceScore !== undefined ? { spliced: spliceScore } : {},
+        windows: windowTraces,
+        wholeHunkReason,
+      },
     },
     usage,
   };
@@ -247,21 +288,49 @@ export async function resolveText(
       let decision = interpret(result, candidates, opts);
       let usage: HunkOutcome["usage"] = result.usage;
 
+      // Second opinion: re-sample an escalated hunk once before decomposing.
+      // Apply only if the resample picks the SAME candidate and now clears the
+      // gates — pick-agreement across samples is real consistency, not noise.
       if (
         decision.action === "escalate" &&
         decision.reason !== "ask-failed" &&
-        opts.decompose !== false
+        opts.secondOpinion !== false
       ) {
-        const retry = await resolveHunkDecomposed(
-          parsed,
-          hunk,
-          ask,
-          opts,
-          decision.reason,
-        );
-        if (retry) {
-          decision = retry.decision;
-          usage = addUsage(usage, retry.usage);
+        const r2 = await ask(request);
+        usage = addUsage(usage, r2.usage);
+        const d2 = interpret(r2, candidates, opts);
+        if (
+          d2.action === "apply" &&
+          d2.candidate?.kind === decision.detail.picked
+        ) {
+          d2.detail.secondOpinion = true;
+          decision = d2;
+        }
+      }
+
+      if (opts.decompose !== false) {
+        const covFail =
+          decision.action === "apply" &&
+          decision.detail.coverage !== undefined &&
+          decision.detail.coverage < (opts.minCoverage ?? 0.5);
+        // Escalations retry per-window; applies with hedged coverage get
+        // refined per-window too — a spliced verdict is strictly better
+        // information than a single-side pick the model doubts covers it.
+        if (
+          (decision.action === "escalate" && decision.reason !== "ask-failed") ||
+          covFail
+        ) {
+          const retry = await resolveHunkDecomposed(
+            parsed,
+            hunk,
+            ask,
+            opts,
+            decision.action === "escalate" ? decision.reason : "not-in-candidates",
+          );
+          if (retry) {
+            decision = retry.decision;
+            usage = addUsage(usage, retry.usage);
+          }
         }
       }
 
