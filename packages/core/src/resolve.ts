@@ -175,7 +175,19 @@ async function resolveHunkDecomposed(
       };
     }
     usage = addUsage(usage, result.usage);
-    const d = interpret(result, candidates, opts);
+    let d = interpret(result, candidates, opts);
+    // Second opinion at window granularity too: a consistent re-pick that
+    // clears the gates rescues a borderline window escalation.
+    if (
+      d.action === "escalate" &&
+      d.reason !== "ask-failed" &&
+      opts.secondOpinion !== false
+    ) {
+      const r2 = await ask(request);
+      usage = addUsage(usage, r2.usage);
+      const d2 = interpret(r2, candidates, opts);
+      if (d2.action === "apply" && d2.candidate?.kind === d.detail.picked) d = d2;
+    }
     windowTraces.push({
       index: wi,
       oursLines: e.ours.length,
