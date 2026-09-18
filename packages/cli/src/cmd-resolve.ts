@@ -26,6 +26,8 @@ export interface ResolveCliOpts extends ResolveOptions {
   json?: boolean;
   verbose?: boolean;
   quiet?: boolean;
+  /** Print the resolved lines under each applied hunk (review aid). */
+  show?: boolean;
   cwd: string;
 }
 
@@ -83,6 +85,13 @@ export async function cmdResolve(o: ResolveCliOpts): Promise<number> {
       for (const x of res.outcomes) {
         console.error(`  ${fmtOutcome(x.hunkIndex, x.decision)}`);
         if (o.verbose) for (const l of fmtOutcomeVerbose(x.decision)) console.error(l);
+        if (o.show && x.decision.action === "apply") {
+          const lines = x.decision.candidate!.lines;
+          const MAX = 8;
+          for (const l of lines.slice(0, MAX)) console.error(green(`    + ${l}`));
+          if (lines.length > MAX) console.error(dim(`    + … ${lines.length - MAX} more`));
+          if (!lines.length) console.error(dim("    + (region dropped)"));
+        }
       }
       if (res.escalated > 0 && !o.check) {
         console.error(dim(`  ${res.escalated} hunk(s) keep markers — resolve by hand or rerun`));

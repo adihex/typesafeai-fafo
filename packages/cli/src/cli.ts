@@ -15,6 +15,7 @@ resolve options:
   --check             report decisions, write nothing
   --json            machine-readable report on stdout
   --verbose         show window traces and raw gate scores per hunk
+  --show            print the resolved lines under each applied hunk
   --quiet           only the final summary
   --ours-intent T   what our change was trying to do (commit msg, free text)
   --theirs-intent T same for theirs
@@ -70,6 +71,7 @@ async function main(): Promise<number> {
       concurrency: { type: "string" },
       verbose: { type: "boolean", short: "v" },
       quiet: { type: "boolean", short: "q" },
+      show: { type: "boolean", short: "s" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -103,6 +105,7 @@ async function main(): Promise<number> {
         check: values.check ?? false,
         verbose: values.verbose ?? false,
         quiet: values.quiet ?? false,
+        show: values.show ?? false,
         cwd: process.cwd(),
       });
     case "dig": {
