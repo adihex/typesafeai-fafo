@@ -18,6 +18,7 @@ failed coverage/verification escalates the hunk (markers stay in the file).
 - `npx tsx packages/cli/src/cli.ts resolve [--check] [--json] [files...]`
 - `npx tsx packages/cli/src/cli.ts install-mergetool [--local] [--diff3]`
 - `npx tsx packages/cli/src/cli.ts dig <repo> [--out corpus.jsonl] [--limit N]`
+- `npx tsx packages/cli/src/cli.ts dig <repo> --prs [--no-fetch]` — harvest conflicts from every open PR (needs `gh`; `resolved:null` entries, eval reports apply-vs-escalate)
 - `npx tsx packages/cli/src/cli.ts eval <corpus.jsonl> [--json]`
 - `npx tsx packages/cli/src/cli.ts report <eval.json> [--out report.html]`
 

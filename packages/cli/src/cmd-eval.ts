@@ -62,6 +62,8 @@ export async function cmdEval(o: {
   let done = 0;
   const reasonCounts = new Map<EscalationReason, number>();
   const candidateCounts = new Map<string, number>();
+  let inputTokens = 0;
+  let outputTokens = 0;
   const startedAt = Date.now();
 
   let idx = 0;
@@ -72,6 +74,7 @@ export async function cmdEval(o: {
         const i = idx++;
         const e = entries[i];
         const intent = intents[e.merge];
+        const isPr = e.pr !== undefined;
         let oursIntent: string | undefined = e.oursLabel;
         let theirsIntent: string | undefined = e.theirsLabel;
         if (intent) {
@@ -87,6 +90,11 @@ export async function cmdEval(o: {
           ].filter(Boolean).join("; ");
           oursIntent = `${frame}. ours-side (${dir?.[2] ?? "ours"}) change: ${intent.ours}`;
           theirsIntent = `${frame}. theirs-side (${dir?.[1] ?? "theirs"}) change: ${intent.theirs}`;
+        } else if (isPr && e.title) {
+          // Open PR: direction is unambiguous — PR head (theirs) → base (ours).
+          const frame = `Merge: PR #${e.pr} "${e.title}" → '${e.base}' (ours, destination branch)`;
+          oursIntent = `${frame}. ours-side ('${e.base}') is the destination branch state`;
+          theirsIntent = `${frame}. theirs-side ('pr${e.pr}') change: ${e.title}`;
         }
         const res = await resolveText(e.conflicted, ask, {
           ...o,
@@ -96,7 +104,12 @@ export async function cmdEval(o: {
         });
 
         let verdict: string;
-        if (e.resolved === null) {
+        if (isPr && e.resolved === null) {
+          // Open PR: no recorded human resolution — verdict is apply vs escalate.
+          verdict = res.escalated > 0 ? "escalated" : "applied";
+          if (res.escalated > 0) escalated++;
+          else resolvedByUs++;
+        } else if (e.resolved === null) {
           verdict = res.escalated > 0 ? "escalated (file deleted in truth)" : "applied (truth: deleted)";
           if (res.escalated > 0) escalated++;
         } else if (res.escalated > 0) {
@@ -118,10 +131,13 @@ export async function cmdEval(o: {
               (candidateCounts.get(x.decision.candidate.kind) ?? 0) + 1,
             );
           }
+          inputTokens += x.usage?.input_tokens ?? 0;
+          outputTokens += x.usage?.output_tokens ?? 0;
         }
 
         rows[i] = {
-          merge: e.merge.slice(0, 8),
+          merge: isPr ? e.merge : e.merge.slice(0, 8),
+          ...(isPr ? { pr: e.pr, title: e.title, base: e.base } : {}),
           path: e.path,
           applied: res.applied,
           escalated: res.escalated,
@@ -136,6 +152,7 @@ export async function cmdEval(o: {
             verify: x.decision.detail.verify,
             discard: x.decision.detail.discard,
             reason: x.decision.reason,
+            wholeHunkReason: x.decision.detail.wholeHunkReason,
             error: x.decision.detail.error,
             conf: x.decision.detail.confidence,
             cov: x.decision.detail.coverage,
@@ -147,6 +164,7 @@ export async function cmdEval(o: {
             base: x.hunk.base,
             resolution:
               x.decision.action === "apply" ? x.decision.candidate!.lines : null,
+            usage: x.usage,
             windows: x.decision.detail.windows?.map((w) => ({
               i: w.index,
               pick: w.picked,
@@ -176,6 +194,7 @@ export async function cmdEval(o: {
     escalated,
     resolvedByUs,
     matchedTruth: correct,
+    tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens },
     matchRate: resolvedByUs ? correct / resolvedByUs : null,
     coverageNote:
       "matchRate is over hunks we applied; escalated entries are neither right nor wrong — they're the gate doing its job.",
@@ -198,6 +217,9 @@ export async function cmdEval(o: {
     if (reasonCounts.size) {
       const mix = [...reasonCounts.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k}:${n}`).join(" ");
       console.error(`  ${dim("escalations")}    ${mix}`);
+    }
+    if (inputTokens + outputTokens > 0) {
+      console.error(`  ${dim("tokens")}          ${(inputTokens + outputTokens).toLocaleString()} (${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out)`);
     }
   }
   return 0;
