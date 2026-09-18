@@ -132,6 +132,26 @@ describe("enumerateCandidates", () => {
     // base ["a"] duplicates ours ["a"] — base should be gone
     expect(cs.map((c) => c.kind)).not.toContain("base");
   });
+
+  it("repairs trailing commas in composed candidates for .json files", () => {
+    const cs = enumerateCandidates(
+      hunk({ ours: ['"a": 1,', "}"], theirs: ['"b": 2,', "}"] }),
+      "f.json",
+    );
+    const union = cs.find((c) => c.kind === "union")!;
+    expect(union.lines).toEqual(['"a": 1', "}", '"b": 2,']);
+    const both = cs.find((c) => c.kind === "both-ours-theirs")!;
+    expect(both.lines).toEqual(['"a": 1', "}", '"b": 2', "}"]);
+  });
+
+  it("leaves trailing commas verbatim for non-json files", () => {
+    const cs = enumerateCandidates(
+      hunk({ ours: ['"a": 1,', "}"], theirs: ['"b": 2,', "}"] }),
+      "f.ts",
+    );
+    const union = cs.find((c) => c.kind === "union")!;
+    expect(union.lines).toEqual(['"a": 1,', "}", '"b": 2,']);
+  });
 });
 
 const candidates: Candidate[] = [
@@ -244,6 +264,163 @@ describe("resolveText", () => {
     const res = await resolveText(MULTI, asker(result()));
     expect(res.outcomes).toHaveLength(2);
     expect(res.text).toBe("a\no1\nmid\no2\nz\n");
+  });
+
+  it("repairs a boundary trailing comma instead of vetoing", async () => {
+    const JSON_CONFLICT = `{
+  "name": "x",
+<<<<<<< HEAD
+  "a": 1,
+=======
+  "b": 2
+>>>>>>> b
+}
+`;
+    // "ours" leaves a trailing comma before "}" — strict JSON can't contain
+    // it, so file-level repair drops the comma and the apply stands.
+    const res = await resolveText(JSON_CONFLICT, asker(result()), {
+      filePath: "f.json",
+    });
+    expect(res.applied).toBe(1);
+    expect(JSON.parse(res.text)).toEqual({ name: "x", a: 1 });
+    expect(hasConflictMarkers(res.text)).toBe(false);
+  });
+
+  it("vetoes every apply when the composed .json file still doesn't parse", async () => {
+    const JSON_CONFLICT = `{
+  "name": "x",
+<<<<<<< HEAD
+  "a":
+=======
+  "b": 2
+>>>>>>> b
+}
+`;
+    // "ours" is truncated — no comma repair can save it, so every apply is
+    // vetoed and the markers stay.
+    const res = await resolveText(JSON_CONFLICT, asker(result()), {
+      filePath: "f.json",
+    });
+    expect(res.applied).toBe(0);
+    expect(res.outcomes[0].decision.reason).toBe("invalid-composition");
+    expect(hasConflictMarkers(res.text)).toBe(true);
+  });
+
+  it("skips repair and veto when the .json file is actually JSONC", async () => {
+    const JSON_CONFLICT = `{
+  // trailing commas are fine here
+<<<<<<< HEAD
+  "a": 1,
+=======
+  "b": 2
+>>>>>>> b
+}
+`;
+    const res = await resolveText(JSON_CONFLICT, asker(result()), {
+      filePath: "f.json",
+    });
+    expect(res.applied).toBe(1);
+    expect(res.text).toContain('"a": 1,');
+    expect(hasConflictMarkers(res.text)).toBe(false);
+  });
+
+  it("keeps applies when the composed .json file parses", async () => {
+    const JSON_CONFLICT = `{
+  "name": "x",
+<<<<<<< HEAD
+  "a": 1
+=======
+  "b": 2
+>>>>>>> b
+}
+`;
+    const res = await resolveText(JSON_CONFLICT, asker(result()), {
+      filePath: "f.json",
+    });
+    expect(res.applied).toBe(1);
+    expect(hasConflictMarkers(res.text)).toBe(false);
+  });
+
+  it("keeps applies when a duplicated block exists in both hunks' sources", async () => {
+    // The block is verbatim in each hunk's ours side — the conflicted file
+    // already carried it twice, so emitting it twice is carried-through,
+    // not a synthesized contradiction.
+    const block = [
+      "alpha_field_one",
+      "alpha_field_two",
+      "alpha_field_three",
+      "alpha_field_four",
+      "alpha_field_five",
+    ].join("\n");
+    const DUP = `a
+<<<<<<< HEAD
+${block}
+=======
+t1
+>>>>>>> b
+mid
+<<<<<<< HEAD
+${block}
+=======
+t2
+>>>>>>> b
+z
+`;
+    const res = await resolveText(DUP, asker(result()));
+    expect(res.applied).toBe(2);
+    expect(hasConflictMarkers(res.text)).toBe(false);
+  });
+
+  it("vetoes a hunk that synthesizes a block another hunk emitted", async () => {
+    // hunk0's union spans a side boundary, producing a 5-line window that
+    // exists in NEITHER side's lines — a synthesized duplicate of the block
+    // hunk1 carries verbatim from its source.
+    const DUP = `a
+<<<<<<< HEAD
+aaa_1
+bbb_2
+=======
+ccc_3
+ddd_4
+eee_5
+>>>>>>> b
+mid
+<<<<<<< HEAD
+aaa_1
+bbb_2
+ccc_3
+ddd_4
+eee_5
+=======
+t2
+>>>>>>> b
+z
+`;
+    let call = 0;
+    const seq: Asker = async () => {
+      call++;
+      if (call === 1) {
+        return result({
+          [PICK]: {
+            type: "choice",
+            choice: "both-ours-theirs",
+            confidence: 0.9,
+            probabilities: {
+              "both-ours-theirs": 0.9,
+              ours: 0.05,
+              theirs: 0.05,
+            },
+          },
+          [verifyKey("both-ours-theirs")]: { type: "noul", noul: 0.9 },
+        });
+      }
+      return result();
+    };
+    const res = await resolveText(DUP, seq);
+    expect(res.applied).toBe(1);
+    expect(res.outcomes[0].decision.reason).toBe("invalid-composition");
+    expect(res.outcomes[1].decision.action).toBe("apply");
+    expect(hasConflictMarkers(res.text)).toBe(true);
   });
 });
 
