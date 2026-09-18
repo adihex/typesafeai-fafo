@@ -2,6 +2,7 @@ import { appendFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git, gitOrDie } from "./git.ts";
+import { fmtDuration, progress } from "./ui.ts";
 
 /**
  * Harvest real merge conflicts from a repo's history. For each merge commit
@@ -53,8 +54,9 @@ export async function cmdDig(o: {
 
   const dir = mkdtempSync(join(tmpdir(), "fafo-dig-"));
   let emitted = 0;
+  const startedAt = Date.now();
 
-  for (const merge of merges) {
+  for (const [mi, merge] of merges.entries()) {
     const parents = gitOrDie(["rev-list", "--parents", "-n1", merge], o.repo)
       .trim()
       .split(" ");
@@ -64,6 +66,9 @@ export async function cmdDig(o: {
     const mt = git(["merge-tree", "--write-tree", p1, p2], o.repo);
     if (mt.code !== 1) continue; // 0=clean, 1=conflicts, other=error — only 1 teaches us anything
     const { conflicts } = parseMergeTree(mt.out);
+    console.error(
+      `${progress(mi + 1, merges.length, startedAt)} ${merge.slice(0, 8)}: ${conflicts.length} conflicted file(s)`,
+    );
 
     // Group stage entries by path.
     const byPath = new Map<string, Map<number, string>>();
@@ -107,6 +112,8 @@ export async function cmdDig(o: {
     }
   }
 
-  console.error(`dug ${emitted} conflicted file(s) from ${merges.length} merge(s)`);
+  console.error(
+    `dug ${emitted} conflicted file(s) from ${merges.length} merge(s) in ${fmtDuration(Date.now() - startedAt)}`,
+  );
   return 0;
 }

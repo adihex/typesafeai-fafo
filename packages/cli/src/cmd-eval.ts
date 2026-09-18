@@ -1,8 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
-import { resolveText, type Asker, type ResolveOptions } from "@fafo/core";
+import {
+  resolveText,
+  type Asker,
+  type EscalationReason,
+  type ResolveOptions,
+} from "@fafo/core";
 import type { DigEntry } from "./cmd-dig.ts";
+import { bold, dim, fmtDuration, green, progress, red, yellow } from "./ui.ts";
 
 interface IntentInfo {
   msg: string;
@@ -34,6 +40,7 @@ export async function cmdEval(o: {
   corpus: string;
   cwd: string;
   json?: boolean;
+  quiet?: boolean;
   concurrency?: number;
 } & ResolveOptions): Promise<number> {
   const entries = readFileSync(o.corpus, "utf8")
@@ -52,6 +59,10 @@ export async function cmdEval(o: {
   let correct = 0;
   let resolvedByUs = 0;
   let escalated = 0;
+  let done = 0;
+  const reasonCounts = new Map<EscalationReason, number>();
+  const candidateCounts = new Map<string, number>();
+  const startedAt = Date.now();
 
   let idx = 0;
   const workers = Array.from(
@@ -98,6 +109,17 @@ export async function cmdEval(o: {
           if (match) correct++;
         }
 
+        for (const x of res.outcomes) {
+          if (x.decision.action === "escalate" && x.decision.reason) {
+            reasonCounts.set(x.decision.reason, (reasonCounts.get(x.decision.reason) ?? 0) + 1);
+          } else if (x.decision.action === "apply" && x.decision.candidate) {
+            candidateCounts.set(
+              x.decision.candidate.kind,
+              (candidateCounts.get(x.decision.candidate.kind) ?? 0) + 1,
+            );
+          }
+        }
+
         rows[i] = {
           merge: e.merge.slice(0, 8),
           path: e.path,
@@ -126,7 +148,14 @@ export async function cmdEval(o: {
             })),
           })),
         };
-        if (!o.json) console.error(`${e.merge.slice(0, 8)} ${e.path}: ${verdict}`);
+        done++;
+        if (!o.json && !o.quiet) {
+          const tag =
+            verdict === "match" ? green(verdict) : verdict === "DIFFERS" ? red(verdict) : yellow(verdict);
+          console.error(`${progress(done, entries.length, startedAt)} ${e.merge.slice(0, 8)} ${e.path}: ${tag}`);
+        } else if (!o.json && done % 25 === 0) {
+          console.error(progress(done, entries.length, startedAt));
+        }
       }
     },
   );
@@ -141,7 +170,25 @@ export async function cmdEval(o: {
     coverageNote:
       "matchRate is over hunks we applied; escalated entries are neither right nor wrong — they're the gate doing its job.",
   };
-  if (o.json) console.log(JSON.stringify({ summary, rows }, null, 2));
-  else console.error(`\nsummary: ${JSON.stringify(summary)}`);
+  if (o.json) {
+    console.log(JSON.stringify({ summary, rows }, null, 2));
+  } else {
+    const pct = (n: number, d: number) => (d ? `${((n / d) * 100).toFixed(1)}%` : "—");
+    console.error(`\n${bold("eval summary")} ${dim(`(${entries.length} entries · ${fmtDuration(Date.now() - startedAt)})`)}`);
+    console.error(`  ${green("matched truth")}   ${correct}`);
+    console.error(`  ${yellow("differs")}         ${resolvedByUs - correct} applied but ≠ truth`);
+    console.error(`  ${dim("escalated")}       ${escalated}`);
+    console.error(
+      `  ${bold("precision")}       ${pct(correct, resolvedByUs)} of applied  ·  ${bold("coverage")} ${pct(resolvedByUs, entries.length)} of entries`,
+    );
+    if (candidateCounts.size) {
+      const mix = [...candidateCounts.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k}:${n}`).join(" ");
+      console.error(`  ${dim("applied picks")}   ${mix}`);
+    }
+    if (reasonCounts.size) {
+      const mix = [...reasonCounts.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k}:${n}`).join(" ");
+      console.error(`  ${dim("escalations")}    ${mix}`);
+    }
+  }
   return 0;
 }

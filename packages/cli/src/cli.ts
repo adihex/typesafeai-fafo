@@ -14,6 +14,8 @@ usage:
 resolve options:
   --check             report decisions, write nothing
   --json            machine-readable report on stdout
+  --verbose         show window traces and raw gate scores per hunk
+  --quiet           only the final summary
   --ours-intent T   what our change was trying to do (commit msg, free text)
   --theirs-intent T same for theirs
   --context N       context lines around each hunk (default 15)
@@ -22,6 +24,8 @@ resolve options:
   --min-verify F      reject winner below this verify noul (default 0.5)
   --no-verify       skip per-candidate verification nouls
   --no-decompose    skip per-window retry on escalated hunks
+  --no-second-opinion  skip re-ask on escalation
+  --no-head-to-head    skip top-2 binary re-pick
   --max-windows N   max sub-regions per hunk when decomposing (default 12)
   --model M         model override (default jev-latest)
 
@@ -29,7 +33,12 @@ dig options:
   --out FILE        append JSONL corpus to file (default: stdout)
   --limit N         max merge commits to scan (default 50)
 
-eval takes the same threshold flags plus --json.
+eval options: same threshold flags plus
+  --concurrency N   parallel entries (default 8)
+  --json            machine-readable rows on stdout
+
+exit codes: resolve/eval → 0 clean, 1 hunks escalated, 2 usage/error.
+colors: on TTY only; NO_COLOR disables.
 
 env: TYPESAFE_API_KEY must be set.
 `;
@@ -59,13 +68,15 @@ async function main(): Promise<number> {
       out: { type: "string" },
       limit: { type: "string" },
       concurrency: { type: "string" },
+      verbose: { type: "boolean", short: "v" },
+      quiet: { type: "boolean", short: "q" },
       help: { type: "boolean", short: "h" },
     },
   });
 
-  if (values.help || !cmd) {
+  if (values.help || !cmd || cmd === "help" || cmd === "--help" || cmd === "-h") {
     console.log(USAGE);
-    return cmd ? 0 : 2;
+    return values.help || cmd === "help" || cmd === "--help" || cmd === "-h" ? 0 : 2;
   }
 
   const shared = {
@@ -86,7 +97,14 @@ async function main(): Promise<number> {
 
   switch (cmd) {
     case "resolve":
-      return cmdResolve({ ...shared, files: positionals, check: values.check ?? false, cwd: process.cwd() });
+      return cmdResolve({
+        ...shared,
+        files: positionals,
+        check: values.check ?? false,
+        verbose: values.verbose ?? false,
+        quiet: values.quiet ?? false,
+        cwd: process.cwd(),
+      });
     case "dig": {
       const repo = positionals[0];
       if (!repo) throw new Error("dig needs a repo path");
@@ -95,7 +113,13 @@ async function main(): Promise<number> {
     case "eval": {
       const corpus = positionals[0];
       if (!corpus) throw new Error("eval needs a corpus.jsonl path");
-      return cmdEval({ ...shared, corpus, cwd: process.cwd(), concurrency: num(values.concurrency, 8) });
+      return cmdEval({
+        ...shared,
+        corpus,
+        cwd: process.cwd(),
+        quiet: values.quiet ?? false,
+        concurrency: num(values.concurrency, 8),
+      });
     }
     default:
       console.error(`unknown command: ${cmd}\n`);
