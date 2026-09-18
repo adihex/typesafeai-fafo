@@ -11,6 +11,7 @@
     "resolve": "tsx src/cli.ts resolve",
     "eval": "tsx src/cli.ts eval",
     "dig": "tsx src/cli.ts dig",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.7"
   }
 }
