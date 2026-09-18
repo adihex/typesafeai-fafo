@@ -247,6 +247,26 @@ export async function resolveText(
       let decision = interpret(result, candidates, opts);
       let usage: HunkOutcome["usage"] = result.usage;
 
+      // Second opinion: re-sample an escalated hunk once before decomposing.
+      // Apply only if the resample picks the SAME candidate and now clears the
+      // gates — pick-agreement across samples is real consistency, not noise.
+      if (
+        decision.action === "escalate" &&
+        decision.reason !== "ask-failed" &&
+        opts.secondOpinion !== false
+      ) {
+        const r2 = await ask(request);
+        usage = addUsage(usage, r2.usage);
+        const d2 = interpret(r2, candidates, opts);
+        if (
+          d2.action === "apply" &&
+          d2.candidate?.kind === decision.detail.picked
+        ) {
+          d2.detail.secondOpinion = true;
+          decision = d2;
+        }
+      }
+
       if (opts.decompose !== false) {
         const covFail =
           decision.action === "apply" &&

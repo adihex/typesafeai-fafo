@@ -94,6 +94,8 @@ export interface Decision {
     windows?: WindowTrace[];
     /** Whole-hunk verdict that triggered decomposition. */
     wholeHunkReason?: EscalationReason;
+    /** Apply came from a consistent second sampling after a first-ask escalation. */
+    secondOpinion?: boolean;
   };
 }
 
@@ -126,6 +128,8 @@ export interface ResolveOptions extends HunkContext {
   model?: string;
   /** Retry escalated hunks as per-window sub-conflicts. Default true. */
   decompose?: boolean;
+  /** Re-sample an escalated hunk once; apply on consistent re-pick. Default true. */
+  secondOpinion?: boolean;
   /** Max windows a hunk may split into before giving up. Default 12. */
   maxWindows?: number;
 }

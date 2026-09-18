@@ -358,13 +358,41 @@ tail
     expect(hasConflictMarkers(res.text)).toBe(true);
   });
 
-  it("does not retry when decompose is off", async () => {
+  it("does not retry when decompose and secondOpinion are off", async () => {
     let calls = 0;
     const ask: Asker = async () => {
       calls++;
       return pickResult("ours", { [COVERED]: { type: "noul", noul: 0.1 } });
     };
-    await resolveText(INTERLEAVED, ask, { decompose: false });
+    await resolveText(INTERLEAVED, ask, { decompose: false, secondOpinion: false });
     expect(calls).toBe(1);
+  });
+
+  it("applies a consistent second opinion after a gated first pick", async () => {
+    let calls = 0;
+    const ask: Asker = async () => {
+      calls++;
+      // first sample: confidence fails gates; second: same pick, clean signals
+      return calls === 1
+        ? pickResult("ours", { [COVERED]: { type: "noul", noul: 0.1 } })
+        : pickResult("ours", { [COVERED]: { type: "noul", noul: 0.95 } });
+    };
+    const res = await resolveText(INTERLEAVED, ask, { decompose: false });
+    expect(calls).toBe(2);
+    expect(res.applied).toBe(1);
+    expect(res.outcomes[0].decision.detail.secondOpinion).toBe(true);
+    expect(res.outcomes[0].decision.candidate?.kind).toBe("ours");
+  });
+
+  it("stays escalated when the second opinion picks differently", async () => {
+    let calls = 0;
+    const ask: Asker = async () => {
+      calls++;
+      return calls === 1
+        ? pickResult("ours", { [COVERED]: { type: "noul", noul: 0.1 } })
+        : pickResult("theirs", { [COVERED]: { type: "noul", noul: 0.95 } });
+    };
+    const res = await resolveText(INTERLEAVED, ask, { decompose: false });
+    expect(res.escalated).toBe(1);
   });
 });

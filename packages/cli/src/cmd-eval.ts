@@ -111,6 +111,7 @@ export async function cmdEval(o: {
             error: x.decision.detail.error,
             conf: x.decision.detail.confidence,
             cov: x.decision.detail.coverage,
+            secondOpinion: x.decision.detail.secondOpinion,
           })),
         };
         if (!o.json) console.error(`${e.merge.slice(0, 8)} ${e.path}: ${verdict}`);
