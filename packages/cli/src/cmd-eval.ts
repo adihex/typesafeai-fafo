@@ -110,6 +110,7 @@ export async function cmdEval(o: {
             pick: x.decision.detail.picked,
             margin: x.decision.detail.pickMargin,
             verify: x.decision.detail.verify,
+            discard: x.decision.detail.discard,
             reason: x.decision.reason,
             error: x.decision.detail.error,
             conf: x.decision.detail.confidence,

@@ -61,6 +61,7 @@ export type EscalationReason =
   | "not-in-candidates"
   | "novel-merge-needed"
   | "verification-failed"
+  | "discards-work"
   | "low-confidence"
   | "ask-failed";
 
@@ -89,6 +90,8 @@ export interface Decision {
     pickMargin?: number;
     coverage?: number;
     verify: Record<string, number>;
+    /** Per-candidate "is the drop safe" nouls for discarding kinds. */
+    discard?: Record<string, number>;
     probabilities?: Record<string, number>;
     /** Error message when the ask itself failed. */
     error?: string;

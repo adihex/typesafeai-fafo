@@ -2,7 +2,7 @@ import { enumerateCandidates } from "./candidates.ts";
 import { decomposeHunk, type Element } from "./decompose.ts";
 import { interpret } from "./interpret.ts";
 import { parseConflicts } from "./parse.ts";
-import { buildHunkRequest, buildPerLineRequest, buildSpliceVerifyRequest, NOVEL, VERIFY_SPLICED } from "./questions.ts";
+import { buildDiscardCheckRequest, buildHunkRequest, buildPerLineRequest, buildSpliceVerifyRequest, DISCARD_CHECK, DISCARDING, NOVEL, VERIFY_SPLICED } from "./questions.ts";
 import type {
   Asker,
   Candidate,
@@ -450,6 +450,45 @@ export async function resolveText(
                 },
               };
             }
+          }
+        }
+      }
+
+      // Discard audit: a borderline pick that drops the other side's work
+      // must survive a focused check on the actual lines being lost.
+      // Single-side picks that silently kill real work are the dominant
+      // wrong-apply shape — asymmetric gates for the dangerous direction.
+      if (
+        decision.action === "apply" &&
+        DISCARDING.has(decision.candidate!.kind) &&
+        (decision.detail.confidence ?? 0) < 0.6 &&
+        !opts.noVerify
+      ) {
+        const oursSet = new Set(hunk.ours.map((l) => l.replace(/\s+$/, "")));
+        const theirsSet = new Set(hunk.theirs.map((l) => l.replace(/\s+$/, "")));
+        const kind = decision.candidate!.kind;
+        const dropped =
+          kind === "ours"
+            ? hunk.theirs.filter((l) => !oursSet.has(l.replace(/\s+$/, "")))
+            : kind === "theirs"
+              ? hunk.ours.filter((l) => !theirsSet.has(l.replace(/\s+$/, "")))
+              : [
+                  ...hunk.ours.filter((l) => !theirsSet.has(l.replace(/\s+$/, ""))),
+                  ...hunk.theirs.filter((l) => !oursSet.has(l.replace(/\s+$/, ""))),
+                ];
+        if (dropped.length > 0) {
+          const dr = await ask(
+            buildDiscardCheckRequest(parsed, hunk, dropped, kind, opts, opts),
+          );
+          usage = addUsage(usage, dr.usage);
+          const a = dr.answers[DISCARD_CHECK];
+          const score = a?.type === "noul" ? (a as { noul: number }).noul : undefined;
+          if (score !== undefined && score < 0.5) {
+            decision = {
+              action: "escalate",
+              reason: "discards-work",
+              detail: { ...decision.detail, discard: { check: score } },
+            };
           }
         }
       }
