@@ -1,0 +1,129 @@
+{
+  "name": "fafo-resolve",
+  "displayName": "FAFO Resolve",
+  "description": "Merge conflicts adjudicated by TypeSafe Jev — code enumerates candidates, Jev picks, low confidence escalates.",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "publisher": "fafo",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.cjs",
+  "contributes": {
+    "commands": [
+      {
+        "command": "fafo.resolveFile",
+        "title": "Resolve conflicts in this file",
+        "category": "FAFO",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "fafo.resolveHunk",
+        "title": "Resolve with Jev",
+        "category": "FAFO"
+      },
+      {
+        "command": "fafo.showLog",
+        "title": "Show decision log",
+        "category": "FAFO"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "fafo.resolveFile",
+          "when": "fafo.hasConflicts",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "fafo.resolveHunk",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "FAFO Resolve",
+      "properties": {
+        "fafo.apiKey": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "TypeSafe API key. `TYPESAFE_API_KEY` in the environment takes precedence. Stored only in VS Code settings — never written to SecretStorage or disk by this extension."
+        },
+        "fafo.minConfidence": {
+          "type": "number",
+          "default": 0.5,
+          "minimum": 0,
+          "maximum": 1,
+          "markdownDescription": "Escalate a hunk when the winning pick's confidence is below this (with corroborating weak signals)."
+        },
+        "fafo.minCoverage": {
+          "type": "number",
+          "default": 0.5,
+          "minimum": 0,
+          "maximum": 1,
+          "markdownDescription": "Escalate when the coverage judgment (correct resolution is among the enumerated candidates) falls below this."
+        },
+        "fafo.minVerify": {
+          "type": "number",
+          "default": 0.5,
+          "minimum": 0,
+          "maximum": 1,
+          "markdownDescription": "Reject the winning candidate when its verification noul falls below this."
+        },
+        "fafo.noVerify": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Skip per-candidate verification nouls (fewer questions per ask, weaker gating)."
+        },
+        "fafo.decompose": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Retry escalated hunks as per-window sub-conflicts before giving up."
+        },
+        "fafo.maxWindows": {
+          "type": "integer",
+          "default": 12,
+          "minimum": 1,
+          "markdownDescription": "Max sub-regions a hunk may split into when decomposing."
+        },
+        "fafo.contextLines": {
+          "type": "integer",
+          "default": 15,
+          "minimum": 0,
+          "markdownDescription": "Lines of surrounding file context included in the state sent to Jev."
+        },
+        "fafo.model": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Model override passed through to the request (empty = SDK default / `TYPESAFE_DEFAULT_MODEL`)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "vscode:prepublish": "node esbuild.mjs --minify"
+  },
+  "dependencies": {
+    "@fafo/core": "workspace:*",
+    "@typesafe-ai/sdk": "^0.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "~1.95.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
