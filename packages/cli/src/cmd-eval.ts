@@ -64,6 +64,7 @@ export async function cmdEval(o: {
   const candidateCounts = new Map<string, number>();
   let inputTokens = 0;
   let outputTokens = 0;
+  let parseErrors = 0;
   const startedAt = Date.now();
 
   let idx = 0;
@@ -96,14 +97,35 @@ export async function cmdEval(o: {
           oursIntent = `${frame}. ours-side ('${e.base}') is the destination branch state`;
           theirsIntent = `${frame}. theirs-side ('pr${e.pr}') change: ${e.title}`;
         }
-        const res = await resolveText(e.conflicted, ask, {
-          ...o,
-          filePath: e.path,
-          oursIntent,
-          theirsIntent,
-        });
-
+        let res: Awaited<ReturnType<typeof resolveText>> | null = null;
         let verdict: string;
+        try {
+          res = await resolveText(e.conflicted, ask, {
+            ...o,
+            filePath: e.path,
+            oursIntent,
+            theirsIntent,
+          });
+        } catch {
+          res = null;
+        }
+        if (res === null) {
+          verdict = "parse-error";
+          parseErrors++;
+          rows[i] = {
+            merge: e.merge.slice(0, 8),
+            path: e.path,
+            applied: 0,
+            escalated: 0,
+            verdict,
+            hunks: [],
+          };
+          done++;
+          if (!o.json && !o.quiet) {
+            console.error(`${progress(done, entries.length, startedAt)} ${e.merge.slice(0, 8)} ${e.path}: ${red(verdict)}`);
+          }
+          continue;
+        }
         if (isPr && e.resolved === null) {
           // Open PR: no recorded human resolution — verdict is apply vs escalate.
           verdict = res.escalated > 0 ? "escalated" : "applied";
@@ -191,6 +213,7 @@ export async function cmdEval(o: {
   const summary = {
     entries: entries.length,
     escalated,
+    parseErrors,
     resolvedByUs,
     matchedTruth: correct,
     tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens },
@@ -206,6 +229,7 @@ export async function cmdEval(o: {
     console.error(`  ${green("matched truth")}   ${correct}`);
     console.error(`  ${yellow("differs")}         ${resolvedByUs - correct} applied but ≠ truth`);
     console.error(`  ${dim("escalated")}       ${escalated}`);
+    if (parseErrors) console.error(`  ${red("parse errors")}   ${parseErrors} (markers unparseable — counted neither way)`);
     console.error(
       `  ${bold("precision")}       ${pct(correct, resolvedByUs)} of applied  ·  ${bold("coverage")} ${pct(resolvedByUs, entries.length)} of entries`,
     );
