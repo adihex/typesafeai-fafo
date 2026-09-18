@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from "node:fs";
+import { resolve as resolvePath } from "node:path";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import {
   hasConflictMarkers,
@@ -49,7 +50,7 @@ export async function cmdResolve(o: ResolveCliOpts): Promise<number> {
 
   for (let fi = 0; fi < files.length; fi++) {
     const file = files[fi];
-    const path = `${o.cwd}/${file}`;
+    const path = resolvePath(o.cwd, file);
     const text = readFileSync(path, "utf8");
     if (!hasConflictMarkers(text)) {
       if (!o.json) console.error(`${sym.file} ${file}: no conflict markers, skipping`);
