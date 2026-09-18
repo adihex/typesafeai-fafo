@@ -42,9 +42,9 @@ for rt in $RUNTIMES; do
       for run in $(seq 1 "$RUNS"); do
         scratch=$(mktemp -d); transcript="$OUT/${rt}.${case}.${arm}.r${run}.json"
         evals/lib/mkfixture.sh "$fixture_kind" "$scratch" || { echo "  $case/$arm/r$run FIXTURE-FAIL"; continue; }
-        home=$(rt_fake_home "$arm") || { echo "  $case/$arm/r$run HOME-FAIL"; continue; }
+        home=$(rt_fake_home "$arm" "$scratch") || { echo "  $case/$arm/r$run HOME-FAIL"; continue; }
         t0=$(date +%s)
-        run_with_deadline rt_invoke "$dir/prompt.md" "$scratch" "$transcript" "$home"
+        run_with_deadline rt_invoke "$PWD/$dir/prompt.md" "$scratch" "$transcript" "$home"
         code=$?
         score_json=$(evals/lib/grade.py "$dir" "$scratch" "$transcript" "$code" 2>/dev/null)
         score=$(echo "$score_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['score'])" 2>/dev/null || echo 0)

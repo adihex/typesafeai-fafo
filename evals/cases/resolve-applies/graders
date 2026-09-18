@@ -3,4 +3,4 @@ file_lacks | app.ts | <<<<<<<
 # file still coherent — original content survived
 file_contains | app.ts | port: 8080
 # used the fafo surface
-transcript_contains | fafo
+transcript_contains | fafo_scan|fafo_resolve|fafo-resolve
