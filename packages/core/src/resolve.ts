@@ -2,7 +2,7 @@ import { enumerateCandidates } from "./candidates.ts";
 import { decomposeHunk, type Element } from "./decompose.ts";
 import { interpret } from "./interpret.ts";
 import { parseConflicts } from "./parse.ts";
-import { buildHunkRequest } from "./questions.ts";
+import { buildHunkRequest, buildSpliceVerifyRequest, VERIFY_SPLICED } from "./questions.ts";
 import type {
   Asker,
   ConflictHunk,
@@ -221,6 +221,31 @@ async function resolveHunkDecomposed(
     else lines.push(...(winners.get(wi++) ?? []));
   }
 
+  // Verify the composition as a whole — window-level verifies judge parts;
+  // a splice can be locally consistent and globally wrong.
+  let spliceScore: number | undefined;
+  if (!opts.noVerify) {
+    const vr = await ask(buildSpliceVerifyRequest(parsed, hunk, lines, opts, opts));
+    usage = addUsage(usage, vr.usage);
+    const a = vr.answers[VERIFY_SPLICED];
+    spliceScore =
+      a?.type === "noul" ? (a as { noul: number }).noul : undefined;
+    if (spliceScore !== undefined && spliceScore < 0.3) {
+      return {
+        decision: {
+          action: "escalate",
+          reason: "verification-failed",
+          detail: {
+            verify: { spliced: spliceScore },
+            windows: windowTraces,
+            wholeHunkReason,
+          },
+        },
+        usage,
+      };
+    }
+  }
+
   return {
     decision: {
       action: "apply",
@@ -230,7 +255,11 @@ async function resolveHunkDecomposed(
           "Line-level merge: the conflict was split into sub-regions and each resolved separately.",
         lines,
       },
-      detail: { verify: {}, windows: windowTraces, wholeHunkReason },
+      detail: {
+        verify: spliceScore !== undefined ? { spliced: spliceScore } : {},
+        windows: windowTraces,
+        wholeHunkReason,
+      },
     },
     usage,
   };

@@ -10,6 +10,7 @@ import type { Candidate, ConflictHunk, HunkContext, ParsedConflicts } from "./ty
 export const PICK = "pick";
 export const COVERED = "covered";
 export const NOVEL = "needs-novel-merge";
+export const VERIFY_SPLICED = "verify_spliced";
 export const verifyKey = (kind: string) => `verify_${kind}`;
 
 const NOVEL_DESCRIPTION =
@@ -112,6 +113,32 @@ export function buildHunkRequest(
   const request: SystemOneRequest<Questions> = {
     state: buildState(parsed, hunk, ctx),
     questions,
+  };
+  if (opts.model) request.model = opts.model;
+  return request;
+}
+
+/**
+ * Verification ask for a stitched splice: one noul over the composed result
+ * against the original whole hunk's context. Window-level verifies judge
+ * parts; this judges the composition.
+ */
+export function buildSpliceVerifyRequest(
+  parsed: ParsedConflicts,
+  hunk: ConflictHunk,
+  splicedLines: string[],
+  ctx: HunkContext,
+  opts: { model?: string } = {},
+): SystemOneRequest<Questions> {
+  const request: SystemOneRequest<Questions> = {
+    state: buildState(parsed, hunk, ctx),
+    questions: {
+      [VERIFY_SPLICED]: noul({
+        instruction:
+          "If this merged result were applied, would it preserve the intent of BOTH the OURS and THEIRS changes (or correctly discard work that is genuinely moot)?",
+        candidate_result: block("spliced resolution", truncateLines(splicedLines, 60)),
+      }),
+    },
   };
   if (opts.model) request.model = opts.model;
   return request;
