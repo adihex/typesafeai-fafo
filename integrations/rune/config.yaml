@@ -1,0 +1,19 @@
+# Rune package overlay — deep-merged into ~/.rune/config.yaml on install.
+# `requirements: python` makes `pkg install` provision the uv toolchain
+# first; `extensions.fafo.path` points at the entry script inside the
+# installed package ($RUNE_DATADIR/lib/<pkg>/).
+requirements:
+  - python
+extensions:
+  fafo:
+    path: "$RUNE_DATADIR/lib/$RUNE_PKG_ID/main.py"
+    config:
+      fafo:
+        # Command used to invoke the resolver. Any argv understood by
+        # `fafo-resolve resolve` works — e.g. a repo checkout:
+        #   cli: "npx tsx /path/to/typesafeai-fafo/packages/cli/src/cli.ts"
+        cli: "fafo-resolve"
+        # Extra environment for the CLI subprocess. TYPESAFE_API_KEY is
+        # inherited from the extension process env when set there; do NOT
+        # put secrets in this file — it ships inside the package.
+        env: {}

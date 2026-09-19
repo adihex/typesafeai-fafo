@@ -1,0 +1,6 @@
+[project]
+name = "fafo-rune"
+version = "0.1.0"
+description = "FAFO — Jev merge-conflict adjudicator for Rune"
+requires-python = ">=3.11"
+dependencies = ["rune-sdk"]

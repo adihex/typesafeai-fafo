@@ -33,8 +33,10 @@ Integrations: `install-mergetool` registers fafo for `git mergetool`
 speaks the `$BASE $OURS $THEIRS $OUT` contract for `jj resolve` (config in
 `docs/jj.md`); lazygit block in `docs/lazygit.md`; hunk extension in
 `integrations/hunk/fafo.ts` (resolve + Jev-rationale comments);
-herdr worker provisioning in `integrations/herdr/`; agent skill in
-`skills/fafo-resolve/`.
+herdr worker provisioning in `integrations/herdr/`; native rune-sdk
+extension + alias fallback in `integrations/rune/` + `docs/rune.md`; Zed
+context-server/tasks/extension scaffold in `integrations/zed/` +
+`docs/zed.md`; agent skill in `skills/fafo-resolve/`.
 
 ## Known limits
 

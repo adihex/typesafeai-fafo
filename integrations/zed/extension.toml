@@ -1,0 +1,9 @@
+id = "fafo"
+name = "FAFO — Jev merge-conflict adjudicator"
+version = "0.1.0"
+schema_version = 1
+authors = ["fafo"]
+description = "Resolve git merge conflicts with TypeSafe Jev — a selector over enumerated candidate resolutions, not a code generator. Escalated hunks keep their markers."
+repository = "https://github.com/adihex/typesafeai-fafo"
+
+[context_servers.fafo]
