@@ -8,6 +8,10 @@ failed coverage/verification escalates the hunk (markers stay in the file).
 
 - `packages/core` (`@fafo/core`) — headless lib. Everything is pure except
   the injected `Asker` (bound `TypeSafeClient.systemOne`).
+- `packages/core-go` — Go port of core, same Asker seam (stdlib-only;
+  `HTTPAsker` posts `POST /v1/systemone` directly, `ResolveText` keeps the
+  full retry ladder + file-level vetoes). Exists so native extensions
+  (Rune Go ext) link the resolver in-process instead of spawning tsx.
 - `packages/cli` (`fafo-resolve`) — thin adapter: `resolve`, `dig`, `eval`.
 - `packages/vscode` (`fafo-resolve` ext) — VS Code UI: command + per-hunk
   CodeLens + decision-log channel. esbuild bundles core to `dist/extension.cjs`.
@@ -15,6 +19,8 @@ failed coverage/verification escalates the hunk (markers stay in the file).
 ## Commands
 
 - `pnpm install` · `pnpm -r typecheck` · `pnpm -r test` (vitest, stubbed asker)
+- `cd packages/core-go && go test ./...` — Go port tests (1:1 port of the
+  vitest suite: parser, candidates, gates, retry ladder, file vetoes)
 - `npx tsx packages/cli/src/cli.ts resolve [--check] [--json] [files...]`
 - `npx tsx packages/cli/src/cli.ts install-mergetool [--local] [--diff3]`
 - `npx tsx packages/cli/src/cli.ts dig <repo> [--out corpus.jsonl] [--limit N]`
