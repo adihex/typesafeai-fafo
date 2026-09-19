@@ -9,6 +9,20 @@ Three levels; the first two are installed already in `~/.config/zed/`.
 never lands in settings. The `turbo` agent profile allows all fafo tools
 (`"fafo": {}` — that profile has `enable_all_context_servers: false`).
 
+The stdio entry shape is flat — `command` is the executable string, with
+`args`/`env` as siblings (`context_servers` is an untagged enum; there is
+no `"source": "custom"` key and `settings` belongs to the extension
+variant only):
+
+```json
+"context_servers": {
+  "fafo": {
+    "command": "/bin/zsh",
+    "args": ["-lc", "set -a; . /path/to/typesafeai-fafo/.env; set +a; exec npx tsx /path/to/packages/cli/src/cli.ts mcp"]
+  }
+}
+```
+
 Tools: `fafo_scan` (conflicts + hunk counts, no key), `fafo_resolve`
 (pipeline; `check: true` dry-runs). In the Agent Panel: "scan this repo
 for conflicts" / "resolve the conflicts in api.ts with fafo".

@@ -1,0 +1,17 @@
+# FAFO Rune extension (native Go) — package overlay.
+# Requirements: go toolchain (Rune provisions ~/.rune/pkg/go).
+requirements:
+  - go
+
+extensions:
+  fafo:
+    path: "$RUNE_DATADIR/lib/$RUNE_PKG_ID"
+
+# Extension config: `fafo.env_file` (or FAFO_ENV_FILE) points at a KEY=VALUE
+# file holding TYPESAFE_API_KEY; fafo.api_base / fafo.model override the
+# endpoint and model. Process env TYPESAFE_* always wins.
+config:
+  fafo:
+    env_file: ""
+    api_base: ""
+    model: ""

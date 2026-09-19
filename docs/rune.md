@@ -1,14 +1,36 @@
 # Rune
 
-Two integration levels:
+Three integration levels:
 
-1. **Native extension** (`integrations/rune/`, recommended) — a real
-   `rune-sdk` child-process extension: `fafo` / `fafo check` / `fafo all`
-   commands, per-hunk verdict notifications, and escalated hunks pushed to
-   the file's location list (`location_next` to walk them). Dev-loop with
-   `extensions start fafo <python> integrations/rune/main.py`; see
-   `integrations/rune/README.md`.
-2. **Command aliases** (below) — zero-dependency fallback using
+1. **Native Go extension** (`integrations/rune-go/`, recommended) — links
+   `packages/core-go` in-process via `github.com/unstablebuild/rune-go-sdk`:
+   `fafo` / `fafo check` / `fafo all` commands, per-hunk verdict
+   notifications, and escalated hunks pushed to the file's location list
+   (`location_next` to walk them). No `npx`/`tsx` subprocess and no
+   `execute` permission — the resolver is a library call, filesystem
+   access goes through Rune's workspace fs API. Register it in
+   `~/.rune/config.yaml`:
+
+   ```yaml
+   extensions:
+     fafo:
+       path: "/path/to/typesafeai-fafo/integrations/rune-go"  # dir with go.mod
+       config:
+         fafo:
+           env_file: "/path/to/typesafeai-fafo/.env"  # holds TYPESAFE_API_KEY
+   ```
+
+   Rune runs `go -C <dir> run .` against the committed `go.mod`/`go.sum`
+   (read-only module mode), so `go.sum` must stay committed and the
+   `replace ../../packages/core-go` means this layout only works inside
+   the repo — a packaged install would need `go mod vendor` or a
+   published core-go module. Key resolution order: process env
+   `TYPESAFE_API_KEY` → `fafo.api_key` config → the env file.
+2. **Python extension** (`integrations/rune/`) — same command surface
+   over `rune-sdk`, but each command spawns the TypeScript CLI via
+   `npx tsx` (needs `execute` permission + the `fafo.cli` config key).
+   Kept as a reference/fallback.
+3. **Command aliases** (below) — zero-dependency fallback using
    `command.aliases` + `!!` shell lines.
 
 ## Command aliases
