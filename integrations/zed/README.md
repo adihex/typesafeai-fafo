@@ -7,7 +7,9 @@ Three levels, easiest first.
 `~/.config/zed/settings.json` now has a top-level `context_servers.fafo`
 spawning `fafo-resolve mcp` through a `zsh -lc` wrapper that sources the repo
 `.env` (keeps `TYPESAFE_API_KEY` out of settings). The Agent Panel's `turbo`
-profile has `"fafo": {}` enabling both tools.
+profile has `"fafo": {"tools": {"fafo_scan": true, "fafo_resolve": true}}`
+enabling both tools (the `tools` map is required — a bare `{}` fails
+settings parsing).
 
 Tools the agent sees: `fafo_scan` (conflicted files + hunk counts, no key
 needed) and `fafo_resolve` (the resolve pipeline; `check:true` dry-runs).

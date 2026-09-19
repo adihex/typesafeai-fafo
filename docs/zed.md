@@ -7,7 +7,9 @@ Three levels; the first two are installed already in `~/.config/zed/`.
 `settings.json` has a top-level `context_servers.fafo` spawning
 `fafo-resolve mcp` via `zsh -lc` that sources the repo `.env` — the key
 never lands in settings. The `turbo` agent profile allows all fafo tools
-(`"fafo": {}` — that profile has `enable_all_context_servers: false`).
+(`"fafo": {"tools": {"fafo_scan": true, "fafo_resolve": true}}` — a
+profile `context_servers` entry requires an explicit `tools` map; `{}`
+fails settings parsing with `missing field 'tools'`).
 
 The stdio entry shape is flat — `command` is the executable string, with
 `args`/`env` as siblings (`context_servers` is an untagged enum; there is
