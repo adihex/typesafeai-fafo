@@ -8,9 +8,9 @@ with `$FILE` / `$WORKSPACE_PATH` substitution.
 ```yaml
 command:
   aliases:
-    fafo:      "!! . /path/to/typesafeai-fafo/.env && npx tsx /path/to/packages/cli/src/cli.ts resolve \"$FILE\""
-    fafocheck: "!! . /path/to/typesafeai-fafo/.env && npx tsx /path/to/packages/cli/src/cli.ts resolve --check \"$FILE\""
-    fafoall:   "!! . /path/to/typesafeai-fafo/.env && npx tsx /path/to/packages/cli/src/cli.ts resolve"
+    fafo:      "!! set -a; . /path/to/typesafeai-fafo/.env; set +a; npx tsx /path/to/packages/cli/src/cli.ts resolve \"$FILE\""
+    fafocheck: "!! set -a; . /path/to/typesafeai-fafo/.env; set +a; npx tsx /path/to/packages/cli/src/cli.ts resolve --check \"$FILE\""
+    fafoall:   "!! set -a; . /path/to/typesafeai-fafo/.env; set +a; npx tsx /path/to/packages/cli/src/cli.ts resolve"
 ```
 
 Then in Rune's command prompt (`:`): `fafo` resolves conflicts in the
@@ -18,5 +18,7 @@ current file, `fafocheck` dry-runs (decisions only, nothing written),
 `fafoall` resolves every conflicted file in the workspace. Escalated
 hunks keep their markers — re-open/reload the buffer to see the result.
 
-Sourcing the repo `.env` supplies `TYPESAFE_API_KEY`; launch Rune from a
-shell that already exports it to skip the `.env` dependency.
+The `set -a` wrapper is required: the `.env` entries are not `export`ed,
+so plain sourcing leaves them invisible to the `npx` child process.
+Launch Rune from a shell that already exports `TYPESAFE_API_KEY` to skip
+the `.env` dependency entirely.
