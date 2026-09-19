@@ -31,9 +31,9 @@ from rune_sdk.extension import (
 )
 
 META = Metadata(
-    developer_id="fafo",
-    developer_email="",
-    developer_key="",
+    developer_id="adihex",
+    developer_email="adihex@users.noreply.github.com",
+    developer_key="local",
     extension_id="fafo",
     extension_name="FAFO — Jev merge-conflict adjudicator",
     extension_version="0.1.0",
