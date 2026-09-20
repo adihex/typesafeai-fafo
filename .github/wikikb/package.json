@@ -1,0 +1,17 @@
+{
+  "name": "wikikb-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build:wkb": "tsc -p tools/wikikb-local/tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.2",
+    "typescript": "^5.9.3"
+  }
+}
