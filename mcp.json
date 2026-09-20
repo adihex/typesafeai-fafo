@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "fafo": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["tsx", "${PLUGIN_ROOT}/packages/cli/src/cli.ts", "mcp"]
+    }
+  }
+}

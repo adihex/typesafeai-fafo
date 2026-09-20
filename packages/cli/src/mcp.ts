@@ -1,10 +1,17 @@
+import { readFileSync } from "node:fs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
+  ErrorCode,
   ListToolsRequestSchema,
+  McpError,
 } from "@modelcontextprotocol/sdk/types.js";
 import { loadRepoEnv, makeAsker, resolveFiles, scanConflicts } from "./mcp-tools.ts";
+
+const VERSION = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+).version as string;
 
 /**
  * `fafo-resolve mcp` — expose the resolver to agents over stdio MCP.
@@ -13,8 +20,14 @@ import { loadRepoEnv, makeAsker, resolveFiles, scanConflicts } from "./mcp-tools
 
 const SCAN_TOOL = {
   name: "fafo_scan",
+  title: "Scan merge conflicts",
   description:
     "List files with unresolved git merge-conflict markers and how many conflict hunks each has. Read-only; needs no API key. Use to size up a merge before resolving.",
+  annotations: {
+    title: "Scan merge conflicts",
+    readOnlyHint: true,
+    openWorldHint: false,
+  },
   inputSchema: {
     type: "object",
     properties: {
@@ -34,8 +47,16 @@ const SCAN_TOOL = {
 
 const RESOLVE_TOOL = {
   name: "fafo_resolve",
+  title: "Resolve merge conflicts",
   description:
     "Resolve git merge conflicts with TypeSafe Jev: code enumerates candidate resolutions (ours/theirs/both/union/base/drop/spliced), Jev picks and verifies, and only hunks passing confidence/coverage/verification gates are written. Escalated hunks keep their <<<<<<< markers for human or agent review — re-run fafo_scan to see what's left.",
+  annotations: {
+    title: "Resolve merge conflicts",
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
   inputSchema: {
     type: "object",
     properties: {
@@ -74,8 +95,11 @@ const RESOLVE_TOOL = {
   },
 } as const;
 
-const ok = (data: unknown) => ({
+// Structured content alongside the text block — spec recommends both for
+// machine-readable results; the text stays for clients that only read content.
+const ok = (data: object) => ({
   content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+  structuredContent: data,
 });
 
 const fail = (err: unknown) => ({
@@ -91,15 +115,32 @@ const fail = (err: unknown) => ({
 export async function cmdMcp(): Promise<never> {
   loadRepoEnv();
   const server = new Server(
-    { name: "fafo-resolve", version: "0.0.0" },
+    { name: "fafo-resolve", version: VERSION },
     { capabilities: { tools: {} } },
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [SCAN_TOOL, RESOLVE_TOOL],
-  }));
+  // Lifecycle: initialization MUST be the first interaction — refuse work
+  // until the client's notifications/initialized arrives.
+  let initialized = false;
+  server.oninitialized = () => {
+    initialized = true;
+  };
+  const requireInit = () => {
+    if (!initialized) {
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        "server not initialized — send initialize, then notifications/initialized",
+      );
+    }
+  };
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    requireInit();
+    return { tools: [SCAN_TOOL, RESOLVE_TOOL] };
+  });
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
+    requireInit();
     const args = (req.params.arguments ?? {}) as Record<string, unknown>;
     const cwd = typeof args.cwd === "string" ? args.cwd : process.cwd();
     const files = Array.isArray(args.files)
@@ -130,8 +171,13 @@ export async function cmdMcp(): Promise<never> {
         );
         return ok(res);
       }
-      return fail(`unknown tool: ${req.params.name}`);
+      // Spec: unknown tools are protocol errors, not tool results.
+      throw new McpError(
+        ErrorCode.MethodNotFound,
+        `unknown tool: ${req.params.name}`,
+      );
     } catch (err) {
+      if (err instanceof McpError) throw err;
       return fail(err);
     }
   });

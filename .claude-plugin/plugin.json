@@ -1,0 +1,10 @@
+{
+  "name": "fafo",
+  "description": "Resolve git merge conflicts with TypeSafe Jev — a selector over enumerated candidate resolutions (ours/theirs/both/union/base/drop/spliced), not a code generator. Unsafe hunks escalate with markers intact.",
+  "version": "0.0.0",
+  "author": {
+    "name": "adihex"
+  },
+  "repository": "https://github.com/adihex/typesafeai-fafo",
+  "license": "MIT"
+}

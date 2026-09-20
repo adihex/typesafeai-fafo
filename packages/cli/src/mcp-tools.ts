@@ -71,6 +71,8 @@ export interface FileReport {
   file: string;
   applied: number;
   escalated: number;
+  /** Jev token spend across all asks for this file, when the asker reports it. */
+  usage?: { input_tokens: number; output_tokens: number };
   outcomes: {
     hunk: number;
     action: string;
@@ -88,6 +90,8 @@ export interface McpResolveResult {
   escalated: number;
   written: string[];
   markersLeftIn: string[];
+  /** Total Jev token spend for the call, when reported. */
+  usage: { input_tokens: number; output_tokens: number };
 }
 
 /** The resolve loop as a pure-ish function — same shape as `resolve --json`. */
@@ -102,6 +106,7 @@ export async function resolveFiles(
     escalated: 0,
     written: [],
     markersLeftIn: [],
+    usage: { input_tokens: 0, output_tokens: 0 },
   };
   for (const file of paths) {
     const abs = resolvePath(o.cwd, file);
@@ -122,10 +127,20 @@ export async function resolveFiles(
     result.applied += res.applied;
     result.escalated += res.escalated;
     if (res.escalated > 0) result.markersLeftIn.push(file);
+    const usage = res.outcomes.reduce(
+      (acc, x) => ({
+        input_tokens: acc.input_tokens + (x.usage?.input_tokens ?? 0),
+        output_tokens: acc.output_tokens + (x.usage?.output_tokens ?? 0),
+      }),
+      { input_tokens: 0, output_tokens: 0 },
+    );
+    result.usage.input_tokens += usage.input_tokens;
+    result.usage.output_tokens += usage.output_tokens;
     result.files.push({
       file,
       applied: res.applied,
       escalated: res.escalated,
+      ...(usage.input_tokens || usage.output_tokens ? { usage } : {}),
       outcomes: res.outcomes.map((x) => ({
         hunk: x.hunkIndex,
         action: x.decision.action,
