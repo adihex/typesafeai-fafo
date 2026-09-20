@@ -1,0 +1,4 @@
+interface:
+  display_name: "WikiKB Memory"
+  short_description: "Recall and maintain durable WikiKB knowledge"
+  default_prompt: "Use $wikikb-memory to recall relevant project knowledge before answering."
